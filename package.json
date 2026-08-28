@@ -1,0 +1,16 @@
+{
+  "name": "tigo-home-assistant-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Native, read-only Tigo Energy Cloud dashboard for Home Assistant",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "check": "node --check scripts/dashboard.mjs && node --check scripts/visual-qa.mjs && node --check src/dashboard.mjs && node --check src/deployer.mjs && node --check src/discovery.mjs && node --check src/ha-client.mjs && node --test",
+    "dashboard": "node scripts/dashboard.mjs",
+    "qa:visual": "node scripts/visual-qa.mjs",
+    "test": "node --test"
+  }
+}
