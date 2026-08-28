@@ -12,6 +12,10 @@ const SYSTEM_ENTITIES = Object.freeze({
   reportingModules: { domain: "sensor", suffix: "reporting_modules", names: ["Reporting Modules"], required: true },
   lastCloudUpdate: { domain: "sensor", suffix: "last_cloud_update", names: ["Last Cloud Update"], required: true },
   cloudDataAge: { domain: "sensor", suffix: "cloud_data_age", names: ["Cloud Data Age"], required: true },
+  accountTier: { domain: "sensor", suffix: "account_tier", names: ["Account Tier"], required: false },
+  moduleCount: { domain: "sensor", suffix: "module_count", names: ["Module Count"], required: false },
+  pollingInterval: { domain: "sensor", suffix: "polling_interval", names: ["Polling Interval"], required: false },
+  integrationVersion: { domain: "sensor", suffix: "integration_version", names: ["Integration Version"], required: false },
   cloudConnected: { domain: "binary_sensor", suffix: "cloud_connected", names: ["Cloud Connected", "API Connectivity"], required: true },
   dataStale: { domain: "binary_sensor", suffix: "data_stale", names: ["Cloud Data Stale", "Data Stale"], required: true },
 });

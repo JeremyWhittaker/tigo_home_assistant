@@ -1,0 +1,7 @@
+{
+  "filename": "tigo_energy.zip",
+  "homeassistant": "2025.1.0",
+  "name": "Tigo Energy Cloud",
+  "render_readme": true,
+  "zip_release": true
+}

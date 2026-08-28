@@ -19,7 +19,7 @@ import {
 } from "../src/deployer.mjs";
 import { discoverTigo, discoveryContract } from "../src/discovery.mjs";
 
-function fixture({ moduleCount = 8, systemId = "155635" } = {}) {
+function fixture({ moduleCount = 8, systemId = "123456" } = {}) {
   const systemDeviceId = "device-system";
   const devices = [{
     id: systemDeviceId,
@@ -115,6 +115,33 @@ test("discovery handles multiple systems with an explicit selector and rejects m
   const missing = fixture({ moduleCount: 1 });
   missing.states.shift();
   assert.throws(() => discoverTigo(missing), /absent from live state/);
+});
+
+test("optional system diagnostics enrich the System view without becoming prerequisites", () => {
+  const complete = fixture({ moduleCount: 2 });
+  const discovery = discoverTigo(complete);
+  const systemView = buildDashboard(discovery).views.find((view) => view.path === "system");
+  const serialized = stableString(systemView);
+  for (const key of ["accountTier", "moduleCount", "pollingInterval", "integrationVersion"]) {
+    assert.ok(discovery.entities[key]);
+    assert.ok(serialized.includes(discovery.entities[key]));
+  }
+
+  const optionalSuffixes = new Set(["account_tier", "module_count", "polling_interval", "integration_version"]);
+  const optionalIds = new Set(
+    complete.entities
+      .filter((entity) => [...optionalSuffixes].some((suffix) => entity.unique_id.endsWith(`_${suffix}`)))
+      .map((entity) => entity.entity_id),
+  );
+  const withoutOptional = {
+    ...complete,
+    entities: complete.entities.filter((entity) => !optionalIds.has(entity.entity_id)),
+    states: complete.states.filter((state) => !optionalIds.has(state.entity_id)),
+  };
+  const fallback = discoverTigo(withoutOptional);
+  assert.equal(fallback.entities.accountTier, null);
+  assert.equal(fallback.entities.moduleCount, null);
+  assert.doesNotThrow(() => validateDashboard(buildDashboard(fallback), withoutOptional.states));
 });
 
 test("dashboard uses four responsive native-only, read-only views for variable module counts", () => {

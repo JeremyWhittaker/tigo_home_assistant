@@ -1,0 +1,58 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Publish integration archive
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@v4
+
+      - name: Verify tag and project versions
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import pathlib
+          import tomllib
+
+          root = pathlib.Path.cwd()
+          expected = os.environ["RELEASE_TAG"].removeprefix("v")
+          manifest = json.loads(
+              (root / "custom_components/tigo_energy/manifest.json").read_text()
+          )
+          project = tomllib.loads((root / "pyproject.toml").read_text())
+          package = json.loads((root / "package.json").read_text())
+          versions = {
+              "manifest": manifest["version"],
+              "pyproject": project["project"]["version"],
+              "package": package["version"],
+          }
+          mismatches = {name: value for name, value in versions.items() if value != expected}
+          if mismatches:
+              raise SystemExit(f"release version mismatch: expected {expected}, got {mismatches}")
+          print(f"release versions agree: {expected}")
+          PY
+
+      - name: Build HACS archive
+        run: zip -r tigo_energy.zip custom_components/tigo_energy
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "${{ github.ref_name }}" tigo_energy.zip
+          --verify-tag --generate-notes
+          --title "Tigo Energy Cloud ${{ github.ref_name }}"

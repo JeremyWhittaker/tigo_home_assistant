@@ -1,0 +1,28 @@
+Tigo Energy Cloud for Home Assistant
+Copyright 2026 Jeremy Whittaker
+
+This product is licensed under the Apache License, Version 2.0.
+
+The following independently licensed projects were reviewed for public API
+behavior, Home Assistant architecture, testing, or documentation patterns:
+
+- Bobsilvio/tigosolar-online
+  https://github.com/Bobsilvio/tigosolar-online
+  Apache License, Version 2.0
+
+- drewcotten/Tigo-Energy
+  https://github.com/drewcotten/Tigo-Energy
+  MIT License; Copyright (c) 2026 Drew Cotten
+
+- JeremyWhittaker/srp-energy-monitor
+  https://github.com/JeremyWhittaker/srp-energy-monitor
+  MIT License; Copyright (c) 2026 Jeremy Whittaker
+
+This acknowledgement records design and research inspiration; it does not imply
+that those projects endorse this product or that their source code was copied
+into it. Any source incorporated in the future must retain notices required by
+its applicable license.
+
+Tigo Energy, EI, and associated product names and marks are the property of
+their respective owners. This project is not affiliated with, endorsed by, or
+supported by Tigo Energy.

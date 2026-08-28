@@ -287,11 +287,29 @@ async function main() {
     const browserErrors = [];
     session.on("Runtime.exceptionThrown", ({ exceptionDetails }) => {
       const text = exceptionDetails?.exception?.description ?? exceptionDetails?.text;
-      if (text) browserErrors.push({ kind: "exception", text: String(text).slice(0, 500) });
+      if (text) browserErrors.push({
+        kind: "exception",
+        url: exceptionDetails?.url ?? null,
+        text: String(text).slice(0, 500),
+      });
     });
     session.on("Log.entryAdded", ({ entry }) => {
       if (entry?.level === "error" && !String(entry.text).startsWith("Failed to load resource:")) {
-        browserErrors.push({ kind: "log", text: String(entry.text).slice(0, 500) });
+        browserErrors.push({
+          kind: "log",
+          url: entry.url ?? null,
+          text: String(entry.text).slice(0, 500),
+        });
+      }
+    });
+    session.on("Network.responseReceived", ({ response }) => {
+      if (response?.status >= 400) {
+        browserErrors.push({
+          kind: "http",
+          status: response.status,
+          url: String(response.url).slice(0, 500),
+          text: response.statusText ?? "",
+        });
       }
     });
 
@@ -324,21 +342,41 @@ async function main() {
       captures.push(await screenshotCase(session, { baseUrl, outputDir, ...captureCase }));
     }
     const uniqueErrors = [...new Map(browserErrors.map((error) => [JSON.stringify(error), error])).values()];
+    const allowedExternalErrors = uniqueErrors.filter((error) => {
+      const combined = `${error.url ?? ""} ${error.text ?? ""}`;
+      const duplicateFocusTrap = String(error.text).includes('the name "focus-trap" has already been used')
+        && ["/hacsfiles/advanced-camera-card/", "/hacsfiles/frigate-hass-card/"]
+          .some((resource) => combined.includes(resource));
+      let knownSourceMapMiss = false;
+      if (error.kind === "http" && error.status === 404 && error.url) {
+        try {
+          knownSourceMapMiss = new URL(error.url).pathname
+            === "/unknown/node_modules/@webcomponents/scoped-custom-element-registry/src/scoped-custom-element-registry.ts";
+        } catch {
+          knownSourceMapMiss = false;
+        }
+      }
+      return duplicateFocusTrap || knownSourceMapMiss;
+    });
+    const actionableErrors = uniqueErrors.filter((error) => !allowedExternalErrors.includes(error));
     const report = {
       checked_at: new Date().toISOString(),
       dashboard_path: dashboardMetadata.urlPath,
       captures,
-      browser_errors: uniqueErrors,
+      browser_errors: actionableErrors,
+      allowed_external_errors: allowedExternalErrors,
     };
     const reportPath = join(outputDir, "report.json");
     writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 });
     chmodSync(reportPath, 0o600);
-    if (uniqueErrors.length > 0) throw new Error(`Browser logged ${uniqueErrors.length} error(s); inspect ${reportPath}`);
+    if (actionableErrors.length > 0) {
+      throw new Error(`Browser logged ${actionableErrors.length} actionable error(s); inspect ${reportPath}`);
+    }
     if (!captures.some((capture) => capture.firstInspection.hasSidebarLink)) {
       throw new Error(`Sidebar link for ${dashboardMetadata.urlPath} was not found; inspect ${reportPath}`);
     }
     const screenshots = captures.reduce((count, capture) => count + capture.segments.length, 0);
-    console.log(`visual-qa-ok routes=4 cases=${captures.length} screenshots=${screenshots} themes=light+dark report=${reportPath}`);
+    console.log(`visual-qa-ok routes=4 cases=${captures.length} screenshots=${screenshots} themes=light+dark report=${reportPath} actionable_errors=0 allowed_external_errors=${allowedExternalErrors.length}`);
   } finally {
     session?.close();
     await stopBrowser(browser);
