@@ -47,7 +47,10 @@ jobs:
           PY
 
       - name: Build HACS archive
-        run: zip -r tigo_energy.zip custom_components/tigo_energy
+        working-directory: custom_components/tigo_energy
+        run: >-
+          zip -r "$GITHUB_WORKSPACE/tigo_energy.zip" .
+          -x '__pycache__/*' '*/__pycache__/*' '*.pyc'
 
       - name: Publish GitHub release
         env:
