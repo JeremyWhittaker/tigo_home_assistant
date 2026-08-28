@@ -350,7 +350,17 @@ def test_retry_after_http_date_is_parsed_against_utc() -> None:
     now = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
 
     assert parse_retry_after("Fri, 28 Aug 2026 12:02:30 GMT", now=now) == 150.0
+    assert parse_retry_after("Fri, 28 Aug 2026 22:00:00 GMT", now=now) == 21_600.0
     assert parse_retry_after("nonsense", now=now) is None
+
+
+@pytest.mark.parametrize("value", ["Infinity", "-Infinity", "NaN"])
+def test_retry_after_rejects_non_finite_values(value: str) -> None:
+    assert parse_retry_after(value) is None
+
+
+def test_retry_after_clamps_oversized_delta_seconds() -> None:
+    assert parse_retry_after("86400000000") == 21_600.0
 
 
 def test_network_error_does_not_echo_secret_like_query_values() -> None:

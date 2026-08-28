@@ -217,6 +217,13 @@ class TigoSystemSensor(CoordinatorEntity[TigoCoordinator], SensorEntity):
         return self.entity_description.value_fn(self.coordinator.data)
 
     @property
+    def available(self) -> bool:
+        """Keep source-time diagnostics visible through cloud outages."""
+        if self.entity_description.key in {"cloud_data_age", "last_cloud_update"}:
+            return self.coordinator.data is not None and self.native_value is not None
+        return super().available
+
+    @property
     def extra_state_attributes(self) -> dict[str, Any]:
         data = self.coordinator.data
         attributes: dict[str, Any] = {

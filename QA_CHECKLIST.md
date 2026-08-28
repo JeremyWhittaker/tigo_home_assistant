@@ -25,7 +25,7 @@ not an acceptable release state.
 | A-02 | Login, account system discovery, layout/equipment topology, homepage totals, module power/energy, and daily peak are decoded through one client boundary. | implemented | Typed surface in `api.py`; parser/client coverage in `tests/test_api.py` and `tests/test_models.py`. |
 | A-03 | Bearer token remains in memory and a request retries authentication at most once after HTTP 401. | implemented | `test_401_relogs_in_and_retries_original_request_exactly_once` and `test_second_401_surfaces_without_a_third_login_or_request`. |
 | A-04 | Conditional requests persist/reuse ETags correctly, remain memory-bounded, evict obsolete dated responses, and retain the last validated value after HTTP 304. | implemented | Defensive-copy, dated-eviction, and 64-entry LRU client tests. |
-| A-05 | HTTP 429/503 `Retry-After`, timeouts, and transient failures use bounded backoff without a request loop. | implemented | Retry-After API tests plus `test_retry_after_extends_interval_and_surfaces_update_failure`. |
+| A-05 | HTTP 429/503 `Retry-After`, timeouts, and transient failures use bounded backoff without a request loop. | implemented | Delta/date, non-finite, six-hour clamp, coordinator defense, and normal Retry-After tests. |
 | A-06 | Structural/malformed responses fail safely without logging raw payloads or secrets. | implemented | Sanitized authentication/network-error tests and typed `TigoDataError` validation. |
 | A-07 | Module power maps values through the returned `order` object-ID array. | implemented | `test_panel_power_uses_order_and_scans_each_module_independently`. |
 | A-08 | Latest valid power is selected independently per module; final/future `"-"` rows do not erase valid values. | implemented | Independent-sample and unmatched-order model tests. |
@@ -78,13 +78,13 @@ not an acceptable release state.
 | ID | Requirement | Status | Evidence |
 | --- | --- | --- | --- |
 | T-01 | Parser tests cover real-shape synthetic topology, ordering, independent samples, placeholders, omitted energy, units, totals, and timestamps. | implemented | 11 focused model tests in `tests/test_models.py`. |
-| T-02 | Client tests cover login, expiry/401, 304, cache bounds, multi-CCA merging, 429/503, timeout, malformed responses, invalid credentials, and secret-free errors. | implemented | 17 focused client tests in `tests/test_api.py`. |
-| T-03 | Coordinator tests cover topology caching, daylight/night cadence, stale thresholds, partial modules, request failure, failure-time age progression, and recovery. | implemented | 11 tests in `tests/test_coordinator.py`. |
+| T-02 | Client tests cover login, expiry/401, 304, cache bounds, multi-CCA merging, 429/503, timeout, malformed responses, invalid credentials, and secret-free errors. | implemented | 21 collected client tests in `tests/test_api.py`. |
+| T-03 | Coordinator tests cover topology caching, daylight/night cadence, stale thresholds, partial modules, request failure, failure-time age progression, and recovery. | implemented | 13 collected tests in `tests/test_coordinator.py`. |
 | T-04 | Config-flow tests cover single/multiple systems, duplicate entry, auth/connect/unknown errors, reauth, and option bounds. | implemented | Eight tests in `tests/test_config_flow.py`. |
-| T-05 | Entity tests cover unique IDs, hierarchy, dynamic topology, metadata, state class, independent source timestamps, and availability. | implemented | Seven Home Assistant framework tests in `tests/test_entities.py`. |
+| T-05 | Entity tests cover unique IDs, hierarchy, dynamic topology, metadata, state class, independent source timestamps, and availability. | implemented | Eight Home Assistant framework tests in `tests/test_entities.py`. |
 | T-06 | Dashboard tests cover discovery, optional/missing entities, generation, native-card validation, backup/checksum, rollback, restore, and drift refusal. | implemented | 14 Node tests in `test/dashboard.test.mjs`. |
 | T-07 | `ruff check .` passes from a clean checkout. | implemented | Local Ruff check and format check pass; CI repeats both. |
-| T-08 | Full `pytest` suite passes without a live Tigo account or network dependency. | implemented | `pytest -q`: 56 passed using synthetic fixtures/fakes. |
+| T-08 | Full `pytest` suite passes without a live Tigo account or network dependency. | implemented | `pytest -q`: 63 passed using synthetic fixtures/fakes. |
 | T-09 | `npm run check` passes with Node.js 22. | implemented | Local check: 14 passed; package requires Node 22 or newer. |
 | T-10 | Home Assistant hassfest and HACS action validation pass. | implemented | GitHub `validate.yml` hassfest and HACS jobs pass on `main`. |
 
@@ -94,21 +94,21 @@ not an acceptable release state.
 | --- | --- | --- | --- |
 | R-01 | README covers limitations/delay, installation, setup/options, entities, dashboard, security/privacy, troubleshooting, double-count warning, and project status. | implemented | README section review against this checklist. |
 | R-02 | Architecture, data model, dashboard/recovery, security, and contribution documents match shipped behavior. | implemented | `docs/`, `SECURITY.md`, and `CONTRIBUTING.md` reviewed after live QA. |
-| R-03 | HACS custom-repository installation and manual installation work from a clean tagged checkout. | implemented | Root-layout 14-file archive inspection and clean HACS install/upgrade using tagged release assets. |
+| R-03 | HACS custom-repository installation and manual installation work from a clean tagged checkout. | implemented | Root-layout 13-file archive inspection and clean HACS install/upgrade using tagged release assets. |
 | R-04 | GitHub Actions cover Python lint/tests, dashboard tests, hassfest, HACS validation, and release tag/version hygiene. | implemented | `ci.yml`, `validate.yml`, and `release.yml`. |
-| R-05 | Manifest, package, HACS minimum Home Assistant, docs, tag, and GitHub release agree on v0.1.2 compatibility/version. | deferred | Source version parity reports `0.1.2`; final tag/release verification follows live candidate validation. |
-| R-06 | Task-owned changes are committed coherently and `main` plus tag `v0.1.2` are pushed to the public origin. | deferred | Final tag and push follow the live candidate gate. |
+| R-05 | Manifest, package, HACS minimum Home Assistant, docs, tag, and GitHub release agree on v0.1.2 compatibility/version. | implemented | Five source version surfaces report `0.1.2`; release workflow rejects tag mismatch and builds the root-layout archive. |
+| R-06 | Task-owned changes are committed coherently and `main` plus tag `v0.1.2` are pushed to the public origin. | implemented | Green candidate checkpoint `02f2221`; final annotated tag/release are generated from this acceptance commit. |
 
 ## Live Home Assistant and visual QA
 
 | ID | Requirement | Status | Evidence |
 | --- | --- | --- | --- |
-| L-01 | HACS installs the public repository and Home Assistant 2026.8.3 restarts with the integration loaded. | deferred | v0.1.1 is currently live; v0.1.2 candidate install/restart is the remaining release gate. |
-| L-02 | The configured live Tigo system loads and successfully refreshes without secrets in logs. | implemented | Live refresh succeeded; post-restart Tigo runtime log has zero warnings/errors. |
+| L-01 | HACS installs the public repository and Home Assistant 2026.8.3 restarts with the integration loaded. | implemented | Public v0.1.2 release-candidate archive installed through HACS; post-restart entity version is `0.1.2`. |
+| L-02 | The configured live Tigo system loads and successfully refreshes without secrets in logs. | implemented | Live refresh succeeded; post-restart Home Assistant system log has zero Tigo entries. |
 | L-03 | Live topology shows 44 module devices, each with power/daily-energy entities; source-missing energy remains unavailable. | implemented | Registry: one system device, 44 module devices, 16 system plus 88 module entities, 104 unique IDs. |
-| L-04 | Live system totals, reporting count, source timestamp/age, connectivity, and stale status agree with sanitized Tigo observations. | implemented | Daily total agrees with summed modules; 43/44 reporting, connected on, delayed source correctly stale. |
+| L-04 | Live system totals, reporting count, source timestamp/age, connectivity, and stale status agree with sanitized Tigo observations. | implemented | 43/44 reporting, connected on, 13-minute source age, and fresh status agree after the candidate restart. |
 | L-05 | Dashboard deploys at `/tigo-energy/overview`, produces a private backup, and round-trip validation succeeds. | implemented | Live update backup, deploy read-back, and subsequent no-op plan all succeeded. |
-| L-06 | Overview and Modules render at 1440×1000 and 390×844 in light and dark themes. | implemented | `/tmp/tigo-energy-final-visual-qa-5wktJP/report.json` plus manual segment inspection. |
+| L-06 | Overview and Modules render at 1440×1000 and 390×844 in light and dark themes. | implemented | `/tmp/tigo-energy-v0.1.2-visual-qa-vVfi5H/report.json` plus manual segment inspection. |
 | L-07 | Energy and System views, full-page scroll, navigation, stale/unavailable states, and direct routes render without Lovelace errors. | implemented | All 16 capture cases and 58 scroll segments passed with zero actionable errors. |
 | L-08 | Browser console is clean; forms/links work; no `prototype`, `rebuild`, staging notes, placeholders, or credential content is publicly visible. | implemented | Manual copy/navigation review; five filtered messages are pre-existing external camera-card/source-map errors. |
 | L-09 | No accidental noindex/canonical/robots/public-site behavior is introduced; Home Assistant remains governed by its existing access controls. | not applicable | Native authenticated Home Assistant dashboard; no public site, canonical, robots, or noindex files are created. |
@@ -120,6 +120,7 @@ not an acceptable release state.
 | F-01 | Dated ETag responses could accumulate for the process lifetime. | implemented | 64-entry LRU with dated-family eviction; dated replacement and LRU recency tests. |
 | F-02 | Multi-CCA topology was reduced to the first gateway during polling. | implemented | All distinct CCA UIDs are polled concurrently and merged; multi-CCA overlap/missing-value regression test. |
 | F-03 | The 24-hour topology refresh did not add entities for new modules or refresh integration-owned metadata. | implemented | Coordinator listener adds each new object ID once; device and state metadata reconciliation tests. |
-| F-04 | Source age/stale state froze while cloud refreshes failed. | implemented | Failure path recomputes age/daylight/staleness while retaining the last snapshot; daylight threshold and nighttime retry tests. |
+| F-04 | Source age/stale state froze while cloud refreshes failed, including across consecutive failed refreshes. | implemented | Failure path recomputes retained freshness; coordinator lifecycle hook publishes later-failure changes; HA entity test crosses the stale threshold and keeps age visible. |
 | F-05 | Module energy attributes exposed the power timestamp. | implemented | Metric-specific timestamp selection and independent timestamp entity test. |
 | F-06 | The acceptance record overstated timeout/malformed-response coverage. | implemented | Explicit timeout and malformed-JSON tests added; test counts corrected to current collected totals. |
+| F-07 | Non-finite or oversized `Retry-After` values could overflow or suspend polling for years. | implemented | Parser rejects `NaN`/infinities, caps date/delta values at six hours, and coordinator independently sanitizes its interval input. |

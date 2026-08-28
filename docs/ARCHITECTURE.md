@@ -44,7 +44,8 @@ The asynchronous client owns all endpoint-specific details:
 - ETag capture and conditional requests in a bounded, dated-response-aware
   in-memory cache;
 - a single re-login after an unauthorized response;
-- `Retry-After` handling and bounded transient-error backoff;
+- `Retry-After` handling with non-finite rejection and a six-hour maximum
+  transient-error backoff;
 - conversion of endpoint payloads to internal typed records.
 
 No Home Assistant entity parses raw JSON. Keeping that work at one boundary

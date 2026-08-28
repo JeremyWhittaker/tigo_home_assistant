@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
 
 import pytest
+from freezegun import freeze_time
 from homeassistant.components.sensor import ATTR_STATE_CLASS, SensorStateClass
 from homeassistant.const import (
     ATTR_DEVICE_CLASS,
@@ -26,6 +27,7 @@ from homeassistant.helpers.update_coordinator import UpdateFailed
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.tigo_energy.const import DOMAIN, INTEGRATION_VERSION
+from custom_components.tigo_energy.exceptions import TigoConnectionError
 from custom_components.tigo_energy.models import PanelReading
 
 
@@ -448,3 +450,47 @@ async def test_update_failure_keeps_health_entities_visible(
     assert state_for(hass, connected_id).state != STATE_UNAVAILABLE
     assert state_for(hass, stale_id).state != STATE_UNAVAILABLE
     assert state_for(hass, module_id).state == STATE_UNAVAILABLE
+
+
+@pytest.mark.asyncio
+async def test_consecutive_failures_publish_advancing_age_and_stale_state(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    fake_cloud_client: MagicMock,
+    tigo_topology,
+    system_info_factory,
+    snapshot_factory,
+) -> None:
+    snapshot = snapshot_factory(last_update=datetime(2026, 8, 28, 17, 50, tzinfo=UTC))
+    info = system_info_factory(day=datetime(2026, 8, 28, tzinfo=UTC).date())
+    with freeze_time("2026-08-28 18:00:00+00:00"):
+        await setup_integration(
+            hass,
+            config_entry,
+            fake_cloud_client,
+            tigo_topology,
+            info,
+            snapshot,
+        )
+
+    coordinator = config_entry.runtime_data
+    fake_cloud_client.get_snapshot.side_effect = TigoConnectionError("offline")
+    registry = er.async_get(hass)
+    connected_id = entity_id_for(registry, "binary_sensor", "1_cloud_connected")
+    stale_id = entity_id_for(registry, "binary_sensor", "1_data_stale")
+    age_id = entity_id_for(registry, "sensor", "1_cloud_data_age")
+
+    with freeze_time("2026-08-28 18:30:00+00:00"):
+        await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert state_for(hass, connected_id).state == STATE_OFF
+    assert state_for(hass, stale_id).state == STATE_OFF
+    assert state_for(hass, age_id).state == "40.0"
+
+    with freeze_time("2026-08-28 18:40:00+00:00"):
+        await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert state_for(hass, connected_id).state == STATE_OFF
+    assert state_for(hass, stale_id).state == STATE_ON
+    assert state_for(hass, stale_id).attributes["age_minutes"] == 50.0
+    assert state_for(hass, age_id).state == "50.0"

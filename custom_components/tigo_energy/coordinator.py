@@ -2,18 +2,19 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .api import TigoCloudClient
+from .api import MAX_RETRY_AFTER_SECONDS, TigoCloudClient
 from .const import (
     CONF_NIGHT_SCAN_INTERVAL,
     CONF_SCAN_INTERVAL,
@@ -64,6 +65,7 @@ class TigoCoordinator(DataUpdateCoordinator[TigoCoordinatorData]):
         self._topology: Topology | None = None
         self._topology_refreshed_at: datetime | None = None
         self._system_info: SystemInfo | None = None
+        self._notify_failure_freshness = False
         self._day_interval = int(
             entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
         )
@@ -146,7 +148,11 @@ class TigoCoordinator(DataUpdateCoordinator[TigoCoordinatorData]):
         )
         is_daylight = _is_daylight(now.astimezone(self.time_zone), system_info)
         baseline = self._day_interval if is_daylight else self._night_interval
-        self.update_interval = timedelta(seconds=max(baseline, retry_after or 0))
+        requested_delay = retry_after if retry_after is not None else 0.0
+        if not math.isfinite(requested_delay):
+            requested_delay = 0.0
+        requested_delay = min(max(requested_delay, 0.0), MAX_RETRY_AFTER_SECONDS)
+        self.update_interval = timedelta(seconds=max(baseline, requested_delay))
 
         if retained is None:
             return
@@ -161,7 +167,7 @@ class TigoCoordinator(DataUpdateCoordinator[TigoCoordinatorData]):
             is_daylight
             and (age_minutes is None or age_minutes * 60 > self._stale_after)
         )
-        self.data = replace(
+        updated = replace(
             retained,
             data_age_minutes=(
                 round(age_minutes, 1) if age_minutes is not None else None
@@ -170,6 +176,18 @@ class TigoCoordinator(DataUpdateCoordinator[TigoCoordinatorData]):
             is_stale=is_stale,
             poll_interval_minutes=self.update_interval.total_seconds() / 60,
         )
+        self._notify_failure_freshness = (
+            not self.last_update_success and updated != retained
+        )
+        self.data = updated
+
+    @callback
+    def _async_refresh_finished(self) -> None:
+        """Publish time-derived changes during consecutive failed refreshes."""
+        if not self._notify_failure_freshness:
+            return
+        self._notify_failure_freshness = False
+        self.async_update_listeners()
 
     async def _async_topology(self, now: datetime) -> Topology:
         if (

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import email.utils
+import math
 from collections import OrderedDict
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
@@ -53,6 +54,7 @@ from .models import (
 DEFAULT_BASE_URL = "https://mapi.tigoenergy.com"
 DEFAULT_APP_VERSION = "5.4.7-04"
 DEFAULT_TIMEOUT = 30.0
+MAX_RETRY_AFTER_SECONDS = 6 * 60 * 60
 _EXPIRY_MARGIN = timedelta(days=1)
 _MAX_ETAG_CACHE_ENTRIES = 64
 _VOLATILE_CACHE_PARAMETERS = frozenset({"date", "resourceid"})
@@ -77,7 +79,9 @@ def parse_retry_after(
     except ValueError:
         seconds = None
     if seconds is not None:
-        return max(seconds, 0.0)
+        if not math.isfinite(seconds):
+            return None
+        return min(max(seconds, 0.0), MAX_RETRY_AFTER_SECONDS)
     try:
         target = email.utils.parsedate_to_datetime(candidate)
     except (TypeError, ValueError, OverflowError):
@@ -89,7 +93,10 @@ def parse_retry_after(
     current = now or datetime.now(UTC)
     if current.tzinfo is None:
         current = current.replace(tzinfo=UTC)
-    return max((target - current).total_seconds(), 0.0)
+    seconds_until_retry = (target - current).total_seconds()
+    if not math.isfinite(seconds_until_retry):
+        return None
+    return min(max(seconds_until_retry, 0.0), MAX_RETRY_AFTER_SECONDS)
 
 
 class TigoCloudClient:
@@ -818,6 +825,7 @@ __all__ = [
     "DEFAULT_APP_VERSION",
     "DEFAULT_BASE_URL",
     "DEFAULT_TIMEOUT",
+    "MAX_RETRY_AFTER_SECONDS",
     "TigoCloudClient",
     "TigoMobileAPI",
     "parse_retry_after",

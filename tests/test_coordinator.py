@@ -232,6 +232,35 @@ async def test_retry_after_extends_interval_and_surfaces_update_failure(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("retry_after", "expected"),
+    [
+        (float("inf"), 300),
+        (86_400_000_000.0, 21_600),
+    ],
+)
+@freeze_time("2026-08-28 18:00:00+00:00")
+async def test_retry_after_is_finite_and_bounded(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    fake_cloud_client: MagicMock,
+    retry_after: float,
+    expected: int,
+) -> None:
+    fake_cloud_client.get_topology.side_effect = TigoRateLimitError(
+        "rate limited",
+        status=429,
+        retry_after=retry_after,
+    )
+    coordinator = make_coordinator(hass, config_entry, fake_cloud_client)
+
+    with pytest.raises(UpdateFailed, match="Temporary Tigo cloud error"):
+        await coordinator._async_update_data()
+
+    assert coordinator.update_interval == timedelta(seconds=expected)
+
+
+@pytest.mark.asyncio
 async def test_failed_refresh_advances_retained_freshness_and_keeps_telemetry(
     hass: HomeAssistant,
     config_entry: MockConfigEntry,
