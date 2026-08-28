@@ -44,9 +44,7 @@ def _system_name(system: Any) -> str:
 def _system_timezone(system: Any) -> str:
     """Return the system timezone with a safe UTC fallback."""
     return str(
-        getattr(system, "timezone", None)
-        or getattr(system, "time_zone", None)
-        or "UTC"
+        getattr(system, "timezone", None) or getattr(system, "time_zone", None) or "UTC"
     )
 
 

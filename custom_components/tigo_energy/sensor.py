@@ -109,9 +109,7 @@ SYSTEM_SENSORS: tuple[TigoSensorDescription, ...] = (
         key="account_tier",
         translation_key="account_tier",
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda data: (
-            "premium" if data.system_info.has_premium else "basic"
-        ),
+        value_fn=lambda data: "premium" if data.system_info.has_premium else "basic",
     ),
     TigoSensorDescription(
         key="module_count",

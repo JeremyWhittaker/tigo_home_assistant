@@ -68,9 +68,7 @@ class TigoCoordinator(DataUpdateCoordinator[TigoCoordinatorData]):
             entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
         )
         self._night_interval = int(
-            entry.options.get(
-                CONF_NIGHT_SCAN_INTERVAL, DEFAULT_NIGHT_SCAN_INTERVAL
-            )
+            entry.options.get(CONF_NIGHT_SCAN_INTERVAL, DEFAULT_NIGHT_SCAN_INTERVAL)
         )
         self._stale_after = int(
             entry.options.get(CONF_STALE_AFTER, DEFAULT_STALE_AFTER)
@@ -115,9 +113,7 @@ class TigoCoordinator(DataUpdateCoordinator[TigoCoordinatorData]):
             last_update = last_update.astimezone(UTC)
 
         age_minutes = (
-            max(0.0, (now - last_update).total_seconds() / 60)
-            if last_update
-            else None
+            max(0.0, (now - last_update).total_seconds() / 60) if last_update else None
         )
         is_daylight = _is_daylight(now.astimezone(self.time_zone), system_info)
         is_stale = bool(
@@ -186,21 +182,15 @@ def _snapshot_last_update(snapshot: Any) -> datetime | None:
     timestamps = [
         timestamp
         for reading in readings
-        if isinstance(
-            (timestamp := getattr(reading, "sample_time", None)), datetime
-        )
+        if isinstance((timestamp := getattr(reading, "sample_time", None)), datetime)
     ]
     return max(timestamps, default=None)
 
 
 def _is_daylight(local_now: datetime, system_info: Any) -> bool:
     """Use Tigo sunrise/sunset metadata, with a conservative local fallback."""
-    sunrise = _as_local_time(
-        getattr(system_info, "sunrise", None), local_now.date()
-    )
-    sunset = _as_local_time(
-        getattr(system_info, "sunset", None), local_now.date()
-    )
+    sunrise = _as_local_time(getattr(system_info, "sunrise", None), local_now.date())
+    sunset = _as_local_time(getattr(system_info, "sunset", None), local_now.date())
     sunrise = sunrise or time(5, 0)
     sunset = sunset or time(21, 0)
     return sunrise <= local_now.timetz().replace(tzinfo=None) <= sunset
