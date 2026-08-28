@@ -1,6 +1,6 @@
 # Tigo Energy Cloud v0.1 quality checklist
 
-This is the implementation and release acceptance record for v0.1.0. Update
+This is the implementation and release acceptance record for v0.1.1. Update
 every row before release with one of `implemented`, `blocked`, `deferred`, or
 `not applicable`, plus specific evidence (test name, command output, path,
 commit, live observation, or external blocker). `pending` is the initial state,
@@ -95,8 +95,8 @@ not an acceptable release state.
 | R-02 | Architecture, data model, dashboard/recovery, security, and contribution documents match shipped behavior. | pending | — |
 | R-03 | HACS custom-repository installation and manual installation work from a clean tagged checkout. | pending | — |
 | R-04 | GitHub Actions cover Python lint/tests, dashboard tests, hassfest, HACS validation, and release tag/version hygiene. | pending | — |
-| R-05 | Manifest, package, HACS minimum Home Assistant, docs, tag, and GitHub release agree on v0.1.0 compatibility/version. | pending | — |
-| R-06 | Task-owned changes are committed coherently and `main` plus tag `v0.1.0` are pushed to the public origin. | pending | — |
+| R-05 | Manifest, package, HACS minimum Home Assistant, docs, tag, and GitHub release agree on v0.1.1 compatibility/version. | pending | — |
+| R-06 | Task-owned changes are committed coherently and `main` plus tag `v0.1.1` are pushed to the public origin. | pending | — |
 
 ## Live Home Assistant and visual QA
 

@@ -162,6 +162,30 @@ test("dashboard uses four responsive native-only, read-only views for variable m
   }
 });
 
+test("overview and system health cards stay compact when module telemetry is unavailable", () => {
+  const data = fixture({ moduleCount: 44 });
+  const discovery = discoverTigo(data);
+  const dashboard = buildDashboard(discovery);
+  const moduleEntityIds = new Set(
+    discovery.modules.flatMap((module) => [module.entities.power, module.entities.energyToday]),
+  );
+
+  for (const path of ["overview", "system"]) {
+    const view = dashboard.views.find((candidate) => candidate.path === path);
+    const entityFilters = view.sections
+      .flatMap((section) => section.cards)
+      .filter((card) => card.type === "entity-filter");
+    assert.equal(entityFilters.length, 1);
+    assert.ok(
+      entityFilters[0].entities.every((row) => !moduleEntityIds.has(row.entity)),
+      `${path} should leave module-level availability to the Modules view`,
+    );
+  }
+
+  const summary = stableString(dashboard.views.find((view) => view.path === "overview"));
+  assert.ok(summary.includes("Module power readings are marked unavailable"));
+});
+
 test("module view groups panels by inverter, MPPT, and string attributes", () => {
   const data = fixture({ moduleCount: 9 });
   const dashboard = buildDashboard(discoverTigo(data));

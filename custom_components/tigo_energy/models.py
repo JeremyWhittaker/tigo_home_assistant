@@ -924,27 +924,27 @@ def parse_homepage(
         energy_today_kwh=_quantity(
             _field(production, "day", "today", "daily"),
             target="kwh",
-            default_unit="kWh",
+            default_unit="Wh",
         ),
         energy_week_kwh=_quantity(
             _field(production, "week", "weekly"),
             target="kwh",
-            default_unit="kWh",
+            default_unit="Wh",
         ),
         energy_month_kwh=_quantity(
             _field(production, "month", "monthly"),
             target="kwh",
-            default_unit="kWh",
+            default_unit="Wh",
         ),
         energy_year_kwh=_quantity(
             _field(production, "year", "yearly", "ytd"),
             target="kwh",
-            default_unit="kWh",
+            default_unit="Wh",
         ),
         energy_lifetime_kwh=_quantity(
             _field(production, "lifetime", "lifeTime", "total"),
             target="kwh",
-            default_unit="kWh",
+            default_unit="Wh",
         ),
         last_update=parse_datetime(
             _field(root, "minLastTime", "lastData", "lastUpdate", "timestamp")

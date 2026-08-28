@@ -49,7 +49,7 @@ function cloudSummary(entities, moduleCount) {
 The integration cannot currently reach the cloud. Existing readings may remain visible for context, but they are not live.
 {% elif stale %}
 ## 🟠 Cloud data is delayed
-The API is reachable, but Tigo's newest source sample is stale. Power readings are not presented as live.
+The API is reachable, but Tigo's newest source sample is stale. Module power readings are marked unavailable; system totals remain visible for context.
 {% else %}
 ## 🟢 Tigo Cloud data is current
 The integration is connected and the most recent source sample is within its freshness window.
@@ -59,7 +59,7 @@ The integration is connected and the most recent source sample is within its fre
 Cloud readings are normally delayed. Missing module values stay unavailable and are never treated as zero.`;
 }
 
-function unavailableCard(entities, modules) {
+function unavailableCard(entities, modules = []) {
   return {
     type: "entity-filter",
     state_filter: ["unknown", "unavailable"],
@@ -146,7 +146,7 @@ export function buildDashboard(discovery) {
                 content: cloudSummary(e, discovery.modules.length),
                 grid_options: { columns: "full" },
               },
-              unavailableCard(e, discovery.modules),
+              unavailableCard(e),
               heading("Production now", "mdi:flash", "subtitle"),
               tile(e.currentPower, "System power", "mdi:solar-power", 6),
               tile(e.peakPowerToday, "Peak power today", "mdi:chart-line-variant", 6),
@@ -268,7 +268,7 @@ export function buildDashboard(discovery) {
                 ]),
                 grid_options: { columns: "full" },
               },
-              unavailableCard(e, discovery.modules),
+              unavailableCard(e),
             ],
           },
           {

@@ -1,11 +1,11 @@
 {
   "energyProduction": {
     "now": {"value": 2.4, "unit": "kW"},
-    "day": 12.5,
-    "week": 72.25,
-    "month": 310.75,
-    "year": 4200.5,
-    "lifetime": 24500.125
+    "day": 12500,
+    "week": 72250,
+    "month": 310750,
+    "year": 4200500,
+    "lifetime": 24500125
   },
   "minLastTime": "2026-08-28 10:20:00"
 }

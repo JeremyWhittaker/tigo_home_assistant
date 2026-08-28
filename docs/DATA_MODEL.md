@@ -25,11 +25,11 @@ and registry relationships are the stable interface used by the dashboard.
 | --- | --- | --- | --- | --- |
 | Current power | W | power | measurement | Tigo homepage value, falling back to a sum of valid module samples |
 | Peak power today | W | power | measurement | Tigo current-day aggregate maximum |
-| Energy today | kWh | energy | total_increasing | Tigo homepage daily production |
-| Energy this week | kWh | energy | total_increasing | Tigo homepage weekly production |
-| Energy this month | kWh | energy | total_increasing | Tigo homepage monthly production |
-| Energy this year | kWh | energy | total_increasing | Tigo homepage yearly production |
-| Lifetime energy | kWh | energy | total | Tigo authoritative, non-resetting lifetime production |
+| Energy today | kWh | energy | total_increasing | Tigo homepage daily production; unitless cloud values are Wh |
+| Energy this week | kWh | energy | total_increasing | Tigo homepage weekly production; unitless cloud values are Wh |
+| Energy this month | kWh | energy | total_increasing | Tigo homepage monthly production; unitless cloud values are Wh |
+| Energy this year | kWh | energy | total_increasing | Tigo homepage yearly production; unitless cloud values are Wh |
+| Lifetime energy | kWh | energy | total | Tigo authoritative lifetime production; unitless cloud values are Wh |
 | Reporting modules | modules | — | measurement | Modules contributing a current power sample |
 | Last cloud update | timestamp | timestamp | — | Newest accepted Tigo source timestamp |
 | Cloud data age | min | duration | measurement | Current time minus source timestamp |

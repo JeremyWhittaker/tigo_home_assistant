@@ -127,7 +127,7 @@ def test_panel_energy_converts_wh_and_keeps_missing_module_unavailable() -> None
     assert summary.total_today_kwh == 2.35
 
 
-def test_homepage_normalizes_power_but_treats_totals_as_kwh() -> None:
+def test_homepage_normalizes_unitless_power_and_wh_energy_totals() -> None:
     production = parse_homepage(
         fixture("homepage.json"),
         day="2026-08-28",
@@ -197,7 +197,7 @@ def test_build_snapshot_merges_without_local_lifetime_accumulation() -> None:
 
 def test_current_power_falls_back_to_sum_only_when_homepage_omits_now() -> None:
     parsed_topology = topology()
-    production = parse_homepage({"energyProduction": {"day": 1.0}})
+    production = parse_homepage({"energyProduction": {"day": 1000.0}})
     power = parse_panel_power(
         fixture("panel_power.json"),
         parsed_topology,
