@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections import defaultdict, deque
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,7 @@ from custom_components.tigo_energy.api import TigoCloudClient, parse_retry_after
 from custom_components.tigo_energy.exceptions import (
     TigoAuthenticationError,
     TigoConnectionError,
+    TigoDataError,
     TigoRateLimitError,
     TigoServiceUnavailableError,
 )
@@ -170,6 +172,58 @@ def test_etag_304_returns_defensive_cached_copy() -> None:
     assert get_calls[1]["headers"]["If-None-Match"] == '"layout-v1"'
 
 
+def test_etag_cache_replaces_older_daily_response() -> None:
+    session = FakeSession()
+    client = client_with_login(session)
+    session.add(
+        "GET",
+        "/api/v3/tigobuild/systeminfo",
+        FakeResponse(200, fixture("system_info.json"), headers={"ETag": '"day-1"'}),
+        FakeResponse(200, fixture("system_info.json"), headers={"ETag": '"day-2"'}),
+        FakeResponse(304),
+        FakeResponse(200, fixture("system_info.json"), headers={"ETag": '"day-1b"'}),
+    )
+
+    run(client.get_system_info(1, "2026-08-28"))
+    run(client.get_system_info(1, "2026-08-29"))
+    run(client.get_system_info(1, "2026-08-29"))
+    run(client.get_system_info(1, "2026-08-28"))
+
+    get_calls = [call for call in session.calls if call["method"] == "GET"]
+    assert get_calls[2]["headers"]["If-None-Match"] == '"day-2"'
+    assert "If-None-Match" not in get_calls[3]["headers"]
+    assert client.diagnostics["conditional_cache_entries"] == 1
+
+
+def test_etag_cache_is_lru_bounded() -> None:
+    session = FakeSession()
+    client = client_with_login(session)
+    session.add(
+        "GET",
+        "/api/v3/systems/layout",
+        *(
+            FakeResponse(
+                200,
+                fixture("layout.json"),
+                headers={"ETag": f'"layout-{system_id}"'},
+            )
+            for system_id in range(1, 66)
+        ),
+        FakeResponse(200, fixture("layout.json"), headers={"ETag": '"layout-1b"'}),
+        FakeResponse(304),
+    )
+
+    for system_id in range(1, 66):
+        run(client.get_layout(system_id))
+    run(client.get_layout(1))
+    run(client.get_layout(65))
+
+    get_calls = [call for call in session.calls if call["method"] == "GET"]
+    assert "If-None-Match" not in get_calls[65]["headers"]
+    assert get_calls[66]["headers"]["If-None-Match"] == '"layout-65"'
+    assert client.diagnostics["conditional_cache_entries"] == 64
+
+
 def test_401_relogs_in_and_retries_original_request_exactly_once() -> None:
     session = FakeSession()
     session.add(
@@ -319,6 +373,34 @@ def test_network_error_does_not_echo_secret_like_query_values() -> None:
     assert panel_call["params"]["uid"] == "SHOULD-NOT-LEAK"
 
 
+def test_timeout_becomes_sanitized_connection_error() -> None:
+    session = FakeSession()
+    client = client_with_login(session)
+    session.add("GET", "/api/v3/systems/query", TimeoutError("request timed out"))
+
+    with pytest.raises(TigoConnectionError, match="Unable to reach") as caught:
+        run(client.get_systems())
+
+    assert "request timed out" not in str(caught.value)
+    assert caught.value.endpoint == "systems"
+
+
+def test_malformed_json_becomes_typed_data_error() -> None:
+    session = FakeSession()
+    client = client_with_login(session)
+    session.add(
+        "GET",
+        "/api/v3/systems/query",
+        FakeResponse(200, json_error=ValueError("invalid JSON body")),
+    )
+
+    with pytest.raises(TigoDataError, match="non-JSON") as caught:
+        run(client.get_systems())
+
+    assert "invalid JSON body" not in str(caught.value)
+    assert caught.value.endpoint == "systems"
+
+
 def test_snapshot_tolerates_only_explicitly_unavailable_optional_endpoints() -> None:
     session = FakeSession()
     client = client_with_login(session)
@@ -354,6 +436,82 @@ def test_snapshot_tolerates_only_explicitly_unavailable_optional_endpoints() -> 
     assert snapshot.peak_power_today_w is None
     assert snapshot.energy_lifetime_kwh == 24500.125
     assert all(reading.energy_today_kwh is None for reading in snapshot.modules)
+
+
+def test_snapshot_merges_newest_valid_power_from_every_cca() -> None:
+    session = FakeSession()
+    client = client_with_login(session)
+    run(client.login())
+    parsed_topology = replace(
+        parse_topology(
+            parse_systems(fixture("systems.json"))[0],
+            fixture("layout.json"),
+            fixture("equipments.json"),
+        ),
+        cca_uids=("CCA-A", "CCA-B"),
+    )
+    session.add(
+        "GET",
+        "/api/v4/smart/systems/1/homepage",
+        FakeResponse(200, fixture("homepage.json")),
+    )
+    session.add(
+        "GET",
+        "/api/v4/system/summary/summary",
+        FakeResponse(
+            200,
+            {
+                "lastData": "2026-08-28 10:30:00",
+                "dataset": [
+                    {
+                        "order": [101, 102],
+                        "data": [
+                            {"t": "10:00", "d": [100, 200]},
+                            {"t": "10:30", "d": ["-", 210]},
+                        ],
+                    }
+                ],
+            },
+        ),
+        FakeResponse(
+            200,
+            {
+                "lastData": "2026-08-28 10:45:00",
+                "dataset": [
+                    {
+                        "order": [101, 102],
+                        "data": [
+                            {"t": "10:15", "d": [110, "-"]},
+                            {"t": "10:45", "d": ["-", "-"]},
+                        ],
+                    }
+                ],
+            },
+        ),
+    )
+
+    snapshot = run(
+        client.get_snapshot(
+            1,
+            "2026-08-28",
+            topology=parsed_topology,
+            cca_uid="CCA-A",
+            system_timezone="America/Phoenix",
+            include_panel_energy=False,
+            include_peak_power=False,
+        )
+    )
+
+    power_by_object_id = {
+        reading.object_id: reading.power_w for reading in snapshot.modules
+    }
+    assert power_by_object_id == {"101": 110.0, "102": 210.0}
+    assert [
+        call["params"]["uid"]
+        for call in session.calls
+        if call["path"] == "/api/v4/system/summary/summary"
+    ] == ["CCA-A", "CCA-B"]
+    assert snapshot.reporting_modules == 2
 
 
 def test_snapshot_does_not_hide_optional_endpoint_connectivity_failure() -> None:

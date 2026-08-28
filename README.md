@@ -24,9 +24,10 @@ send control commands.
 - Home Assistant UI setup, system discovery, reauthentication, and poll options.
 - System power, today's peak power, and production totals for today, week,
   month, year, and lifetime.
-- Power and daily energy for every module reported by Tigo.
+- Power and daily energy for every module reported across all system CCAs.
 - Separate cloud-connectivity and data-freshness status.
 - Stable entity and device identities derived from Tigo system/module IDs.
+- Automatic discovery of newly added modules during the daily topology refresh.
 - A responsive, optional dashboard built entirely with Home Assistant cards.
 - Sanitized diagnostics, automated tests, HACS validation, and hassfest checks.
 
@@ -177,6 +178,12 @@ The integration preserves missing Tigo values instead of displaying false
 zeroes. Compare the module with the Tigo application and review the integration
 diagnostics. A temporary missing daily-energy value can occur even when the
 module exists in the system layout.
+
+If hardware was just added, allow up to 24 hours for the cached topology to
+refresh. New module devices and entities are then added automatically without
+renaming existing entities. Removed modules are retained in the Home Assistant
+registry as unavailable so their history and automation references are not
+silently destroyed.
 
 ### The integration no longer loads data
 

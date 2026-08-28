@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -98,12 +98,10 @@ class TigoCoordinator(DataUpdateCoordinator[TigoCoordinatorData]):
         except TigoAuthError as err:
             raise ConfigEntryAuthFailed(str(err)) from err
         except TigoRetryableError as err:
-            if err.retry_after:
-                self.update_interval = timedelta(
-                    seconds=max(self._day_interval, int(err.retry_after))
-                )
+            self._advance_retained_freshness(now, retry_after=err.retry_after)
             raise UpdateFailed(f"Temporary Tigo cloud error: {err}") from err
         except TigoApiError as err:
+            self._advance_retained_freshness(now)
             raise UpdateFailed(f"Error communicating with Tigo cloud: {err}") from err
 
         last_update = _snapshot_last_update(snapshot)
@@ -130,6 +128,44 @@ class TigoCoordinator(DataUpdateCoordinator[TigoCoordinatorData]):
             fetched_at=now,
             last_cloud_update=last_update,
             data_age_minutes=round(age_minutes, 1) if age_minutes is not None else None,
+            is_daylight=is_daylight,
+            is_stale=is_stale,
+            poll_interval_minutes=self.update_interval.total_seconds() / 60,
+        )
+
+    def _advance_retained_freshness(
+        self,
+        now: datetime,
+        *,
+        retry_after: float | None = None,
+    ) -> None:
+        """Advance time-derived metadata while retaining last good telemetry."""
+        retained = self.data
+        system_info = (
+            retained.system_info if retained is not None else self._system_info
+        )
+        is_daylight = _is_daylight(now.astimezone(self.time_zone), system_info)
+        baseline = self._day_interval if is_daylight else self._night_interval
+        self.update_interval = timedelta(seconds=max(baseline, retry_after or 0))
+
+        if retained is None:
+            return
+
+        last_update = retained.last_cloud_update
+        age_minutes = (
+            max(0.0, (now - last_update).total_seconds() / 60)
+            if last_update is not None
+            else None
+        )
+        is_stale = bool(
+            is_daylight
+            and (age_minutes is None or age_minutes * 60 > self._stale_after)
+        )
+        self.data = replace(
+            retained,
+            data_age_minutes=(
+                round(age_minutes, 1) if age_minutes is not None else None
+            ),
             is_daylight=is_daylight,
             is_stale=is_stale,
             poll_interval_minutes=self.update_interval.total_seconds() / 60,

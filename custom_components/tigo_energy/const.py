@@ -8,7 +8,7 @@ from datetime import timedelta
 from homeassistant.const import Platform
 
 DOMAIN = "tigo_energy"
-INTEGRATION_VERSION = "0.1.1"
+INTEGRATION_VERSION = "0.1.2"
 LOGGER = logging.getLogger(__package__)
 
 MANUFACTURER = "Tigo Energy"

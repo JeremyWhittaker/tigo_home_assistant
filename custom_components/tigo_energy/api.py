@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import email.utils
+from collections import OrderedDict
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass
@@ -31,6 +32,7 @@ from .exceptions import (
 from .models import (
     PanelEnergySummary,
     PanelPowerSummary,
+    PanelReading,
     PeakPower,
     ProductionTotals,
     SystemInfo,
@@ -52,6 +54,8 @@ DEFAULT_BASE_URL = "https://mapi.tigoenergy.com"
 DEFAULT_APP_VERSION = "5.4.7-04"
 DEFAULT_TIMEOUT = 30.0
 _EXPIRY_MARGIN = timedelta(days=1)
+_MAX_ETAG_CACHE_ENTRIES = 64
+_VOLATILE_CACHE_PARAMETERS = frozenset({"date", "resourceid"})
 
 
 @dataclass(slots=True)
@@ -122,7 +126,7 @@ class TigoCloudClient:
         self._token: str | None = None
         self._token_expires: datetime | None = None
         self._login_lock = asyncio.Lock()
-        self._etag_cache: dict[tuple[Any, ...], _CacheEntry] = {}
+        self._etag_cache: OrderedDict[tuple[Any, ...], _CacheEntry] = OrderedDict()
 
     def __repr__(self) -> str:
         """Return a representation that cannot expose credentials or tokens."""
@@ -233,6 +237,43 @@ class TigoCloudClient:
         )
         return method.upper(), path, normalized
 
+    @staticmethod
+    def _cache_family_key(cache_key: tuple[Any, ...]) -> tuple[Any, ...]:
+        """Group dated requests whose newest response supersedes older days."""
+
+        method, path, params = cache_key
+        stable_params = tuple(
+            (key, value)
+            for key, value in params
+            if key.lower() not in _VOLATILE_CACHE_PARAMETERS
+        )
+        return method, path, stable_params
+
+    def _remember_response(
+        self,
+        cache_key: tuple[Any, ...],
+        *,
+        etag: str,
+        payload: Any,
+    ) -> None:
+        """Store one response while bounding and aging conditional state."""
+
+        family_key = self._cache_family_key(cache_key)
+        for existing_key in tuple(self._etag_cache):
+            if (
+                existing_key != cache_key
+                and self._cache_family_key(existing_key) == family_key
+            ):
+                del self._etag_cache[existing_key]
+
+        self._etag_cache[cache_key] = _CacheEntry(
+            etag=etag,
+            payload=deepcopy(payload),
+        )
+        self._etag_cache.move_to_end(cache_key)
+        while len(self._etag_cache) > _MAX_ETAG_CACHE_ENTRIES:
+            self._etag_cache.popitem(last=False)
+
     async def _request_json(
         self,
         method: str,
@@ -288,6 +329,8 @@ class TigoCloudClient:
         cached = (
             self._etag_cache.get(cache_key) if use_etag and method == "GET" else None
         )
+        if cached is not None:
+            self._etag_cache.move_to_end(cache_key)
         headers = dict(self._base_headers)
         if json_data is not None:
             headers["Content-Type"] = "application/json"
@@ -361,9 +404,10 @@ class TigoCloudClient:
                     ) from None
                 etag = response_headers.get("ETag")
                 if use_etag and method == "GET" and etag:
-                    self._etag_cache[cache_key] = _CacheEntry(
+                    self._remember_response(
+                        cache_key,
                         etag=etag,
-                        payload=deepcopy(payload),
+                        payload=payload,
                     )
                 return deepcopy(payload)
         except TigoError:
@@ -642,8 +686,14 @@ class TigoCloudClient:
         surface so Home Assistant can report the integration unhealthy.
         """
 
-        uid = cca_uid or topology.cca_uid
-        if not uid:
+        cca_uids = tuple(
+            dict.fromkeys(
+                uid
+                for uid in ((cca_uid,) if cca_uid else ()) + topology.cca_uids
+                if uid
+            )
+        )
+        if not cca_uids:
             raise TigoDataError("Tigo topology does not identify a CCA")
 
         homepage_task = asyncio.create_task(
@@ -653,15 +703,23 @@ class TigoCloudClient:
                 system_timezone=system_timezone,
             )
         )
-        power_task = asyncio.create_task(
-            self.get_panel_power(
-                system_id,
-                uid,
-                day,
-                topology=topology,
-                system_timezone=system_timezone,
+
+        async def all_panel_power() -> PanelPowerSummary:
+            summaries = await asyncio.gather(
+                *(
+                    self.get_panel_power(
+                        system_id,
+                        uid,
+                        day,
+                        topology=topology,
+                        system_timezone=system_timezone,
+                    )
+                    for uid in cca_uids
+                )
             )
-        )
+            return self._merge_panel_power(topology, summaries)
+
+        power_task = asyncio.create_task(all_panel_power())
 
         async def optional_energy() -> PanelEnergySummary | None:
             if not include_panel_energy:
@@ -697,6 +755,54 @@ class TigoCloudClient:
             peak_task,
         )
         return build_snapshot(topology, production, power, energy, peak)
+
+    @staticmethod
+    def _merge_panel_power(
+        topology: Topology,
+        summaries: Sequence[PanelPowerSummary],
+    ) -> PanelPowerSummary:
+        """Merge CCA responses using each module's newest valid sample."""
+
+        selected: dict[str, PanelReading] = {}
+        for summary in summaries:
+            for reading in summary.readings:
+                if reading.power_w is None:
+                    continue
+                current = selected.get(reading.object_id)
+                if current is None or (
+                    reading.sample_time is not None
+                    and (
+                        current.sample_time is None
+                        or reading.sample_time > current.sample_time
+                    )
+                ):
+                    selected[reading.object_id] = reading
+
+        readings = tuple(
+            PanelReading(
+                module=module,
+                power_w=(
+                    selected[module.object_id].power_w
+                    if module.object_id in selected
+                    else None
+                ),
+                sample_time=(
+                    selected[module.object_id].sample_time
+                    if module.object_id in selected
+                    else None
+                ),
+            )
+            for module in topology.modules
+        )
+        updates = [
+            summary.last_update
+            for summary in summaries
+            if summary.last_update is not None
+        ]
+        return PanelPowerSummary(
+            readings=readings,
+            last_update=max(updates) if updates else None,
+        )
 
     def clear_response_cache(self) -> None:
         """Clear conditional-response state, primarily for reconfiguration."""

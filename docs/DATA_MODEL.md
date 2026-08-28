@@ -78,7 +78,13 @@ missing value in the last row must not erase an earlier valid value, and a
 module's timestamp must not be borrowed from another module.
 
 Daily module energy is keyed by Tigo object ID. If the service omits a key, that
-module's entity is unavailable. Missing never means zero.
+module's entity is unavailable. Missing never means zero. Power and energy
+entities retain their own source timestamps; one metric never borrows the
+other's timestamp.
+
+For systems with multiple CCAs, the same selection is performed for every CCA.
+Results are merged by module object ID, and the newest valid per-module sample
+wins. A missing value from one CCA cannot erase a valid value from another.
 
 ## Freshness and availability
 
@@ -96,8 +102,10 @@ minutes late. Fetch time is not sample time.
 
 When a refresh fails, the coordinator may retain its last accepted snapshot for
 context, but Home Assistant availability and status entities communicate that
-the snapshot is not current. Recovery occurs on the next fully validated
-response without requiring a restart.
+the snapshot is not current. Source age and daylight staleness continue to
+advance during the outage rather than freezing at the last successful fetch.
+Recovery occurs on the next fully validated response without requiring a
+restart.
 
 ## Topology changes
 
@@ -105,6 +113,8 @@ Topology is cached for up to 24 hours. On refresh:
 
 - new modules acquire devices/entities using their object IDs;
 - reordered modules retain their identities;
+- changed Tigo labels and hierarchy attributes update while user-assigned
+  Home Assistant names remain authoritative;
 - removed modules are no longer updated but are not silently deleted from the
   Home Assistant registry;
 - a temporary missing module value does not change topology.

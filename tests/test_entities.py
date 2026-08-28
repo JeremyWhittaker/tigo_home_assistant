@@ -26,6 +26,7 @@ from homeassistant.helpers.update_coordinator import UpdateFailed
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.tigo_energy.const import DOMAIN, INTEGRATION_VERSION
+from custom_components.tigo_energy.models import PanelReading
 
 
 def entity_id_for(
@@ -240,6 +241,181 @@ async def test_stale_data_disables_module_power_but_preserves_daily_energy(
         state_for(hass, entity_id_for(registry, "binary_sensor", "1_data_stale")).state
         == STATE_ON
     )
+
+
+@pytest.mark.asyncio
+async def test_topology_refresh_adds_new_module_entities_once(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    fake_cloud_client: MagicMock,
+    tigo_topology,
+    system_info_factory,
+    snapshot_factory,
+) -> None:
+    info, snapshot = fresh_day_data(system_info_factory, snapshot_factory)
+    await setup_integration(
+        hass,
+        config_entry,
+        fake_cloud_client,
+        tigo_topology,
+        info,
+        snapshot,
+    )
+    coordinator = config_entry.runtime_data
+    new_module = replace(
+        tigo_topology.modules[0],
+        object_id="103",
+        label="B1",
+        serial="SANITIZED-MODULE-103",
+        equipment_id="B1",
+    )
+    changed_topology = replace(
+        tigo_topology,
+        modules=(*tigo_topology.modules, new_module),
+        signature="topology-with-module-103",
+    )
+    changed_snapshot = replace(
+        snapshot,
+        modules=(
+            *snapshot.modules,
+            PanelReading(
+                module=new_module,
+                power_w=105.0,
+                sample_time=snapshot.last_update,
+                energy_today_kwh=1.1,
+                energy_sample_time=snapshot.last_update,
+            ),
+        ),
+        reporting_modules=3,
+    )
+
+    coordinator.async_set_updated_data(
+        replace(
+            coordinator.data,
+            topology=changed_topology,
+            snapshot=changed_snapshot,
+        )
+    )
+    await hass.async_block_till_done()
+    registry = er.async_get(hass)
+
+    assert (
+        state_for(
+            hass,
+            entity_id_for(registry, "sensor", "1_module_103_power"),
+        ).state
+        == "105.0"
+    )
+    assert (
+        state_for(
+            hass,
+            entity_id_for(registry, "sensor", "1_module_103_energy_today"),
+        ).state
+        == "1.1"
+    )
+    assert len(er.async_entries_for_config_entry(registry, config_entry.entry_id)) == 22
+
+    coordinator.async_set_updated_data(coordinator.data)
+    await hass.async_block_till_done()
+    assert len(er.async_entries_for_config_entry(registry, config_entry.entry_id)) == 22
+
+
+@pytest.mark.asyncio
+async def test_topology_refresh_updates_existing_module_metadata(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    fake_cloud_client: MagicMock,
+    tigo_topology,
+    system_info_factory,
+    snapshot_factory,
+) -> None:
+    info, snapshot = fresh_day_data(system_info_factory, snapshot_factory)
+    await setup_integration(
+        hass,
+        config_entry,
+        fake_cloud_client,
+        tigo_topology,
+        info,
+        snapshot,
+    )
+    coordinator = config_entry.runtime_data
+    original = tigo_topology.by_object_id["101"]
+    renamed = replace(
+        original,
+        label="North roof A1",
+        model="TS4-A-O",
+        string_label="North string",
+    )
+    changed_topology = replace(
+        tigo_topology,
+        modules=tuple(
+            renamed if module.object_id == "101" else module
+            for module in tigo_topology.modules
+        ),
+        signature="renamed-module-101",
+    )
+
+    coordinator.async_set_updated_data(
+        replace(coordinator.data, topology=changed_topology)
+    )
+    await hass.async_block_till_done()
+    entities = er.async_get(hass)
+    module_power = state_for(
+        hass,
+        entity_id_for(entities, "sensor", "1_module_101_power"),
+    )
+    assert module_power.attributes["panel_label"] == "North roof A1"
+    assert module_power.attributes["string_label"] == "North string"
+
+    device = dr.async_get(hass).async_get_device(identifiers={(DOMAIN, "1_module_101")})
+    assert device is not None
+    assert device.name == "North roof A1"
+    assert device.model == "TS4-A-O"
+
+
+@pytest.mark.asyncio
+async def test_module_energy_uses_its_own_sample_timestamp(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    fake_cloud_client: MagicMock,
+    tigo_topology,
+    system_info_factory,
+    snapshot_factory,
+) -> None:
+    info, snapshot = fresh_day_data(system_info_factory, snapshot_factory)
+    power_time = datetime(2026, 8, 28, 18, 0, tzinfo=UTC)
+    energy_time = datetime(2026, 8, 28, 18, 15, tzinfo=UTC)
+    changed_readings = tuple(
+        replace(
+            reading,
+            sample_time=power_time,
+            energy_sample_time=energy_time,
+        )
+        if reading.object_id == "101"
+        else reading
+        for reading in snapshot.modules
+    )
+    snapshot = replace(snapshot, modules=changed_readings)
+    await setup_integration(
+        hass,
+        config_entry,
+        fake_cloud_client,
+        tigo_topology,
+        info,
+        snapshot,
+    )
+    registry = er.async_get(hass)
+
+    power = state_for(
+        hass,
+        entity_id_for(registry, "sensor", "1_module_101_power"),
+    )
+    energy = state_for(
+        hass,
+        entity_id_for(registry, "sensor", "1_module_101_energy_today"),
+    )
+    assert power.attributes["sample_time"] == power_time.isoformat()
+    assert energy.attributes["sample_time"] == energy_time.isoformat()
 
 
 @pytest.mark.asyncio

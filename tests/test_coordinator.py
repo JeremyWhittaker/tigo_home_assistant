@@ -212,6 +212,7 @@ async def test_authentication_error_requests_config_entry_reauth(
 
 
 @pytest.mark.asyncio
+@freeze_time("2026-08-28 18:00:00+00:00")
 async def test_retry_after_extends_interval_and_surfaces_update_failure(
     hass: HomeAssistant,
     config_entry: MockConfigEntry,
@@ -228,6 +229,100 @@ async def test_retry_after_extends_interval_and_surfaces_update_failure(
         await coordinator._async_update_data()
 
     assert coordinator.update_interval == timedelta(seconds=900)
+
+
+@pytest.mark.asyncio
+async def test_failed_refresh_advances_retained_freshness_and_keeps_telemetry(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    fake_cloud_client: MagicMock,
+    tigo_topology,
+    system_info_factory,
+    snapshot_factory,
+) -> None:
+    snapshot = snapshot_factory(last_update=datetime(2026, 8, 28, 17, 50, tzinfo=UTC))
+    fake_cloud_client.get_topology.return_value = tigo_topology
+    fake_cloud_client.get_system_info.return_value = system_info_factory(
+        day=date(2026, 8, 28)
+    )
+    fake_cloud_client.get_snapshot.return_value = snapshot
+    coordinator = make_coordinator(hass, config_entry, fake_cloud_client)
+
+    with freeze_time("2026-08-28 18:00:00+00:00"):
+        await coordinator.async_refresh()
+
+    retained = coordinator.data
+    assert retained is not None
+    assert coordinator.last_update_success is True
+
+    fake_cloud_client.get_snapshot.side_effect = TigoConnectionError("offline")
+    with freeze_time("2026-08-28 18:30:00+00:00"):
+        await coordinator.async_refresh()
+
+    first_failure = coordinator.data
+    assert first_failure is not None
+    assert coordinator.last_update_success is False
+    assert isinstance(coordinator.last_exception, UpdateFailed)
+    assert first_failure.snapshot is snapshot
+    assert first_failure.fetched_at == retained.fetched_at
+    assert first_failure.last_cloud_update == retained.last_cloud_update
+    assert first_failure.data_age_minutes == 40.0
+    assert first_failure.is_daylight is True
+    assert first_failure.is_stale is False
+
+    with freeze_time("2026-08-28 18:40:00+00:00"):
+        await coordinator.async_refresh()
+
+    second_failure = coordinator.data
+    assert second_failure is not None
+    assert coordinator.last_update_success is False
+    assert second_failure.snapshot is snapshot
+    assert second_failure.fetched_at == retained.fetched_at
+    assert second_failure.data_age_minutes == 50.0
+    assert second_failure.is_daylight is True
+    assert second_failure.is_stale is True
+
+
+@pytest.mark.asyncio
+async def test_retry_after_respects_night_baseline_and_updates_retained_metadata(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    fake_cloud_client: MagicMock,
+    tigo_topology,
+    system_info_factory,
+    snapshot_factory,
+) -> None:
+    snapshot = snapshot_factory(last_update=datetime(2026, 8, 28, 17, 50, tzinfo=UTC))
+    fake_cloud_client.get_topology.return_value = tigo_topology
+    fake_cloud_client.get_system_info.return_value = system_info_factory(
+        day=date(2026, 8, 28)
+    )
+    fake_cloud_client.get_snapshot.return_value = snapshot
+    coordinator = make_coordinator(hass, config_entry, fake_cloud_client)
+
+    with freeze_time("2026-08-28 18:00:00+00:00"):
+        await coordinator.async_refresh()
+
+    fake_cloud_client.get_system_info.return_value = system_info_factory(
+        day=date(2026, 8, 28)
+    )
+    fake_cloud_client.get_snapshot.side_effect = TigoRateLimitError(
+        "rate limited",
+        status=429,
+        retry_after=900,
+    )
+    with freeze_time("2026-08-29 06:00:00+00:00"):
+        await coordinator.async_refresh()
+
+    retained = coordinator.data
+    assert retained is not None
+    assert coordinator.last_update_success is False
+    assert retained.snapshot is snapshot
+    assert retained.data_age_minutes == 730.0
+    assert retained.is_daylight is False
+    assert retained.is_stale is False
+    assert retained.poll_interval_minutes == 30.0
+    assert coordinator.update_interval == timedelta(seconds=1800)
 
 
 @pytest.mark.asyncio

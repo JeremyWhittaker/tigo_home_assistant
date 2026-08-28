@@ -14,7 +14,8 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.const import EntityCategory, UnitOfEnergy, UnitOfPower, UnitOfTime
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
@@ -30,6 +31,7 @@ from .const import (
     MODEL,
 )
 from .coordinator import TigoCoordinator, TigoCoordinatorData
+from .models import Module
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -149,14 +151,51 @@ async def async_setup_entry(
     entities: list[SensorEntity] = [
         TigoSystemSensor(coordinator, description) for description in SYSTEM_SENSORS
     ]
-    for module in coordinator.data.topology.modules:
-        entities.extend(
-            (
-                TigoModuleSensor(coordinator, module, "power"),
-                TigoModuleSensor(coordinator, module, "energy_today"),
-            )
+    known_module_ids: set[str] = set()
+    module_metadata: dict[str, tuple[str, str | None, str, str, str]] = {}
+
+    def module_entities(module: Module) -> tuple[TigoModuleSensor, TigoModuleSensor]:
+        object_id = _module_object_id(module)
+        known_module_ids.add(object_id)
+        module_metadata[object_id] = _module_metadata(module)
+        return (
+            TigoModuleSensor(coordinator, module, "power"),
+            TigoModuleSensor(coordinator, module, "energy_today"),
         )
+
+    for module in coordinator.data.topology.modules:
+        entities.extend(module_entities(module))
     async_add_entities(entities)
+
+    @callback
+    def async_reconcile_modules() -> None:
+        """Add newly discovered modules and refresh changed device metadata."""
+        new_entities: list[TigoModuleSensor] = []
+        device_registry = dr.async_get(hass)
+        for module in coordinator.data.topology.modules:
+            object_id = _module_object_id(module)
+            current_metadata = _module_metadata(module)
+            if object_id not in known_module_ids:
+                new_entities.extend(module_entities(module))
+                continue
+            if module_metadata.get(object_id) == current_metadata:
+                continue
+            module_metadata[object_id] = current_metadata
+            device = device_registry.async_get_device(
+                identifiers={(DOMAIN, f"{coordinator.system_id}_module_{object_id}")}
+            )
+            if device is not None:
+                # User-assigned names and areas remain authoritative. Updating
+                # integration-owned metadata keeps topology changes visible.
+                device_registry.async_update_device(
+                    device.id,
+                    name=_module_label(module),
+                    model=str(module.model or "TS4 Optimizer"),
+                )
+        if new_entities:
+            async_add_entities(new_entities)
+
+    entry.async_on_unload(coordinator.async_add_listener(async_reconcile_modules))
 
 
 class TigoSystemSensor(CoordinatorEntity[TigoCoordinator], SensorEntity):
@@ -206,12 +245,14 @@ class TigoModuleSensor(CoordinatorEntity[TigoCoordinator], SensorEntity):
     _attr_has_entity_name = True
     _attr_attribution = ATTRIBUTION
 
-    def __init__(self, coordinator: TigoCoordinator, module: Any, kind: str) -> None:
+    def __init__(self, coordinator: TigoCoordinator, module: Module, kind: str) -> None:
         super().__init__(coordinator)
-        self.module = module
+        self._object_id = _module_object_id(module)
+        self._fallback_module = module
         self.kind = kind
-        object_id = _module_object_id(module)
-        self._attr_unique_id = f"{coordinator.system_id}_module_{object_id}_{kind}"
+        self._attr_unique_id = (
+            f"{coordinator.system_id}_module_{self._object_id}_{kind}"
+        )
         self._attr_translation_key = (
             "module_power" if kind == "power" else "module_energy_today"
         )
@@ -230,8 +271,15 @@ class TigoModuleSensor(CoordinatorEntity[TigoCoordinator], SensorEntity):
         self._attr_device_info = _module_device_info(coordinator, module)
 
     @property
+    def module(self) -> Module:
+        """Return current topology metadata while retaining a removal fallback."""
+        return self.coordinator.data.topology.by_object_id.get(
+            self._object_id, self._fallback_module
+        )
+
+    @property
     def available(self) -> bool:
-        reading = _module_reading(self.coordinator.data, _module_object_id(self.module))
+        reading = _module_reading(self.coordinator.data, self._object_id)
         value = _reading_value(reading, self.kind)
         if self.kind == "power" and self.coordinator.data.is_stale:
             return False
@@ -239,18 +287,22 @@ class TigoModuleSensor(CoordinatorEntity[TigoCoordinator], SensorEntity):
 
     @property
     def native_value(self) -> StateType:
-        reading = _module_reading(self.coordinator.data, _module_object_id(self.module))
+        reading = _module_reading(self.coordinator.data, self._object_id)
         return _reading_value(reading, self.kind)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        reading = _module_reading(self.coordinator.data, _module_object_id(self.module))
-        sample_time = getattr(reading, "sample_time", None) if reading else None
+        module = self.module
+        reading = _module_reading(self.coordinator.data, self._object_id)
+        timestamp_field = (
+            "sample_time" if self.kind == "power" else "energy_sample_time"
+        )
+        sample_time = getattr(reading, timestamp_field, None) if reading else None
         return {
-            "panel_label": _module_label(self.module),
-            "inverter_label": getattr(self.module, "inverter_label", None),
-            "mppt_label": getattr(self.module, "mppt_label", None),
-            "string_label": getattr(self.module, "string_label", None),
+            "panel_label": _module_label(module),
+            "inverter_label": module.inverter_label,
+            "mppt_label": module.mppt_label,
+            "string_label": module.string_label,
             "sample_time": (
                 sample_time.isoformat()
                 if isinstance(sample_time, datetime)
@@ -291,6 +343,17 @@ def _module_object_id(module: Any) -> str:
 
 def _module_label(module: Any) -> str:
     return str(getattr(module, "label", None) or f"Module {_module_object_id(module)}")
+
+
+def _module_metadata(module: Module) -> tuple[str, str | None, str, str, str]:
+    """Return integration-owned metadata used to detect topology changes."""
+    return (
+        _module_label(module),
+        module.model,
+        module.inverter_label,
+        module.mppt_label,
+        module.string_label,
+    )
 
 
 def _system_device_info(coordinator: TigoCoordinator) -> DeviceInfo:

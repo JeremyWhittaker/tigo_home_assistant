@@ -41,7 +41,8 @@ The asynchronous client owns all endpoint-specific details:
 - authentication and in-memory bearer-token lifetime;
 - mobile-client request headers;
 - URL/query construction and response validation;
-- ETag capture and conditional requests;
+- ETag capture and conditional requests in a bounded, dated-response-aware
+  in-memory cache;
 - a single re-login after an unauthorized response;
 - `Retry-After` handling and bounded transient-error backoff;
 - conversion of endpoint payloads to internal typed records.
@@ -61,10 +62,11 @@ snapshot consumed by every entity.
 
 - Topology is loaded at setup and refreshed no more than once every 24 hours.
 - Dynamic requests retrieve the homepage totals, aggregate power/energy, and
-  module samples.
+  module samples from every CCA recorded in the topology.
 - Conditional requests reuse the last accepted value after HTTP `304`.
 - A failed request does not erase the last valid sample; connectivity and
-  sample freshness describe its current quality.
+  sample freshness continue advancing independently so an outage cannot freeze
+  a previously fresh age/status value.
 - Source timestamps, rather than Home Assistant fetch time, drive freshness.
 - Daylight/night behavior uses system timezone and Tigo sunrise/sunset data when
   available, with a safe fallback when solar-time metadata is absent.
@@ -82,7 +84,10 @@ contract.
 
 System totals use the authoritative values provided by the Tigo homepage
 endpoint. Module-derived power uses the newest valid sample for each module, not
-the final row of a dataset and not a single global timestamp.
+the final row of a dataset and not a single global timestamp. Multi-CCA systems
+merge those independent results by object ID and sample timestamp. A topology
+refresh adds entities for newly discovered module IDs and updates integration-
+owned display metadata without deleting registry history for removed modules.
 
 See [DATA_MODEL.md](DATA_MODEL.md) for entity semantics and missing-data rules.
 
