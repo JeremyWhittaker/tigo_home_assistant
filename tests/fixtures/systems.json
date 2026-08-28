@@ -1,0 +1,11 @@
+{
+  "systems": [
+    {
+      "id": 1,
+      "name": "Example Solar Array",
+      "timezone": "America/Phoenix",
+      "latitude": 0.0,
+      "longitude": 0.0
+    }
+  ]
+}

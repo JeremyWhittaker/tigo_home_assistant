@@ -1,0 +1,13 @@
+{
+  "domain": "tigo_energy",
+  "name": "Tigo Energy Cloud",
+  "codeowners": ["@JeremyWhittaker"],
+  "config_flow": true,
+  "documentation": "https://github.com/JeremyWhittaker/tigo_home_assistant",
+  "integration_type": "hub",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/JeremyWhittaker/tigo_home_assistant/issues",
+  "loggers": ["custom_components.tigo_energy"],
+  "requirements": [],
+  "version": "0.1.0"
+}

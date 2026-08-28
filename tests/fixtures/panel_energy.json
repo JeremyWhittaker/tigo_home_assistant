@@ -1,0 +1,11 @@
+{
+  "dataset": {
+    "101": 1200
+  },
+  "datasetLastData": {
+    "101": "2026-08-28 10:15:00"
+  },
+  "dailyStats": {
+    "total_agg_energy": 2350
+  }
+}

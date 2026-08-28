@@ -1,9 +1,11 @@
 .env
 .foreman/
 .venv/
+node_modules/
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.coverage
 .mypy_cache/
 .ruff_cache/
 coverage.xml
@@ -11,4 +13,6 @@ htmlcov/
 dist/
 build/
 *.egg-info/
+artifacts/
+screenshots/
 .DS_Store

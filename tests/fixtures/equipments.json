@@ -1,0 +1,19 @@
+[
+  {
+    "equipmentType": "unit",
+    "equipmentId": "CCA",
+    "equipmentSerial": "REDACTED-CCA"
+  },
+  {
+    "equipmentType": "panel",
+    "equipmentId": "A2",
+    "equipmentSerial": "REDACTED-MODULE-B",
+    "equipmentModel": "TS4 example"
+  },
+  {
+    "equipmentType": "panel",
+    "equipmentId": "A1",
+    "equipmentSerial": "REDACTED-MODULE-A",
+    "equipmentModel": "TS4 example"
+  }
+]

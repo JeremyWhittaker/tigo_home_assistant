@@ -1,0 +1,12 @@
+{
+  "has_premium": false,
+  "features": [
+    "Display.energy",
+    "Display.pin"
+  ],
+  "2026-08-28": {
+    "timezone": "America/Phoenix",
+    "sunrise": 5.75,
+    "sunset": "18:45"
+  }
+}

@@ -1,0 +1,71 @@
+{
+  "title": "Tigo Energy Cloud",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Tigo Energy",
+        "description": "Enter the credentials used by the Tigo Energy Intelligence app. This unofficial, read-only integration uses Tigo's cloud and data may be delayed.",
+        "data": {"username": "Username", "password": "Password"}
+      },
+      "system": {
+        "title": "Choose a system",
+        "description": "Select the Tigo system to add.",
+        "data": {"system_id": "System"}
+      },
+      "reauth_confirm": {
+        "title": "Reconnect Tigo Energy",
+        "description": "Update the credentials for this Tigo system.",
+        "data": {"username": "Username", "password": "Password"}
+      }
+    },
+    "error": {
+      "cannot_connect": "Unable to connect to Tigo Energy",
+      "invalid_auth": "The username or password is invalid",
+      "no_systems": "No Tigo systems were found for this account",
+      "system_not_found": "The configured system is no longer available to this account",
+      "unknown": "Unexpected error"
+    },
+    "abort": {
+      "already_configured": "This Tigo system is already configured",
+      "discovery_expired": "System discovery expired; start setup again",
+      "reauth_successful": "Tigo credentials were updated"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Tigo Energy polling",
+        "description": "Intervals and the stale threshold are in seconds. Polling faster cannot make Tigo's cloud samples real-time.",
+        "data": {
+          "scan_interval": "Daylight polling interval",
+          "night_scan_interval": "Night polling interval",
+          "stale_after": "Daylight stale-data threshold"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "current_power": {"name": "Current power"},
+      "peak_power_today": {"name": "Peak power today"},
+      "energy_today": {"name": "Energy today"},
+      "energy_week": {"name": "Energy this week"},
+      "energy_month": {"name": "Energy this month"},
+      "energy_year": {"name": "Energy this year"},
+      "energy_lifetime": {"name": "Lifetime energy"},
+      "reporting_modules": {"name": "Reporting modules"},
+      "last_cloud_update": {"name": "Last cloud update"},
+      "cloud_data_age": {"name": "Cloud data age"},
+      "account_tier": {"name": "Account tier"},
+      "module_count": {"name": "Configured modules"},
+      "polling_interval": {"name": "Polling interval"},
+      "integration_version": {"name": "Integration version"},
+      "module_power": {"name": "Power"},
+      "module_energy_today": {"name": "Energy today"}
+    },
+    "binary_sensor": {
+      "cloud_connected": {"name": "Cloud connection"},
+      "data_stale": {"name": "Cloud data stale"}
+    }
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "system": {
+    "id": 1,
+    "name": "Example Solar Array",
+    "timezone": "America/Phoenix",
+    "inverters": [
+      {
+        "label": "Inverter 1",
+        "mppts": [
+          {
+            "label": "MPPT 1",
+            "strings": [
+              {
+                "label": "String A",
+                "panels": [
+                  {
+                    "object_id": 101,
+                    "label": "A1",
+                    "serial": "REDACTED-MODULE-A",
+                    "type": "TS4 example"
+                  },
+                  {
+                    "object_id": 102,
+                    "label": "A2",
+                    "serial": "REDACTED-MODULE-B",
+                    "type": "TS4 example"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
