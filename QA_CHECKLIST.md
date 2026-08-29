@@ -97,16 +97,16 @@ not an acceptable release state.
 | R-03 | HACS custom-repository installation and manual installation work from a clean tagged checkout. | implemented | Root-layout 13-file archive inspection and clean HACS install/upgrade using tagged release assets. |
 | R-04 | GitHub Actions cover Python lint/tests, dashboard tests, hassfest, HACS validation, and release tag/version hygiene. | implemented | `ci.yml`, `validate.yml`, and `release.yml`. |
 | R-05 | Manifest, package, HACS minimum Home Assistant, docs, tag, and GitHub release agree on v0.1.2 compatibility/version. | implemented | Five source version surfaces report `0.1.2`; release workflow rejects tag mismatch and builds the root-layout archive. |
-| R-06 | Task-owned changes are committed coherently and `main` plus tag `v0.1.2` are pushed to the public origin. | implemented | Green candidate checkpoint `02f2221`; final annotated tag/release are generated from this acceptance commit. |
+| R-06 | Task-owned changes are committed coherently and `main` plus tag `v0.1.2` are pushed to the public origin. | implemented | Final code/acceptance commit `7accd15`, annotated tag `v0.1.2`, public release, and synchronized `main`. |
 
 ## Live Home Assistant and visual QA
 
 | ID | Requirement | Status | Evidence |
 | --- | --- | --- | --- |
-| L-01 | HACS installs the public repository and Home Assistant 2026.8.3 restarts with the integration loaded. | implemented | Public v0.1.2 release-candidate archive installed through HACS; post-restart entity version is `0.1.2`. |
+| L-01 | HACS installs the public repository and Home Assistant 2026.8.3 restarts with the integration loaded. | implemented | Final public `v0.1.2` archive installed through HACS; installed/available/entity versions all report `v0.1.2`/`0.1.2` after restart. |
 | L-02 | The configured live Tigo system loads and successfully refreshes without secrets in logs. | implemented | Live refresh succeeded; post-restart Home Assistant system log has zero Tigo entries. |
 | L-03 | Live topology shows 44 module devices, each with power/daily-energy entities; source-missing energy remains unavailable. | implemented | Registry: one system device, 44 module devices, 16 system plus 88 module entities, 104 unique IDs. |
-| L-04 | Live system totals, reporting count, source timestamp/age, connectivity, and stale status agree with sanitized Tigo observations. | implemented | 43/44 reporting, connected on, 13-minute source age, and fresh status agree after the candidate restart. |
+| L-04 | Live system totals, reporting count, source timestamp/age, connectivity, and stale status agree with sanitized Tigo observations. | implemented | 43/44 reporting, connected on, 36-minute source age, and fresh status agree after the final release restart. |
 | L-05 | Dashboard deploys at `/tigo-energy/overview`, produces a private backup, and round-trip validation succeeds. | implemented | Live update backup, deploy read-back, and subsequent no-op plan all succeeded. |
 | L-06 | Overview and Modules render at 1440×1000 and 390×844 in light and dark themes. | implemented | `/tmp/tigo-energy-v0.1.2-visual-qa-vVfi5H/report.json` plus manual segment inspection. |
 | L-07 | Energy and System views, full-page scroll, navigation, stale/unavailable states, and direct routes render without Lovelace errors. | implemented | All 16 capture cases and 58 scroll segments passed with zero actionable errors. |
