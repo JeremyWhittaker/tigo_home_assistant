@@ -1,6 +1,6 @@
 {
   "name": "tigo-home-assistant-dashboard",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "Native, read-only Tigo Energy Cloud dashboard for Home Assistant",

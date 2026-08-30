@@ -1,7 +1,7 @@
 # Architecture
 
 This document describes the intended and tested architecture of Tigo Energy
-Cloud v0.1. The integration is read-only and has a deliberately narrow boundary
+Cloud v0.2. The integration is read-only and has a deliberately narrow boundary
 around Tigo's unofficial mobile endpoints.
 
 ## System shape
@@ -92,13 +92,14 @@ owned display metadata without deleting registry history for removed modules.
 
 See [DATA_MODEL.md](DATA_MODEL.md) for entity semantics and missing-data rules.
 
-## Endpoint behavior used by v0.1
+## Endpoint behavior used by v0.2
 
 The Basic-account implementation relies on the same JSON service family used by
 the Tigo mobile application:
 
 - login and account system discovery;
 - system layout/equipment topology;
+- build-configured per-module panel ratings;
 - homepage production totals;
 - module power summary;
 - module daily aggregate energy;

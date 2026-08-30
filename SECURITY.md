@@ -6,7 +6,7 @@ project.
 
 ## Supported versions
 
-Only the newest published release receives security fixes. During the `0.1.x`
+Only the newest published release receives security fixes. During the `0.2.x`
 development series, users should update to the latest patch before reporting a
 problem already fixed there.
 
