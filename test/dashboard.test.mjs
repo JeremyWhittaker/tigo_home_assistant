@@ -237,7 +237,7 @@ test("dashboard uses responsive native-only, read-only views for variable module
   }
 });
 
-test("overview stays compact while Diagnostics lists module-level exceptions", () => {
+test("overview stays compact while Diagnostics separates stale and module-level exceptions", () => {
   const data = fixture({ moduleCount: 44 });
   const discovery = discoverTigo(data);
   const dashboard = buildDashboard(discovery);
@@ -254,7 +254,21 @@ test("overview stays compact while Diagnostics lists module-level exceptions", (
 
   const diagnosticsFilters = filtersFor("system");
   assert.equal(diagnosticsFilters.length, 1);
-  assert.ok(diagnosticsFilters[0].entities.some((row) => moduleEntityIds.has(row.entity)));
+  assert.ok(diagnosticsFilters[0].entities.some((row) => discovery.modules
+    .some((module) => row.entity === module.entities.energyToday)));
+  assert.ok(diagnosticsFilters[0].entities.every((row) => !discovery.modules
+    .some((module) => row.entity === module.entities.power)));
+
+  const diagnosticsCards = dashboard.views.find((candidate) => candidate.path === "system").sections
+    .flatMap((section) => section.cards);
+  const modulePowerExceptions = diagnosticsCards.find((card) =>
+    card.type === "conditional" && card.card?.type === "entity-filter");
+  assert.deepEqual(modulePowerExceptions.conditions, [
+    { condition: "state", entity: discovery.entities.dataStale, state: "off" },
+  ]);
+  assert.ok(modulePowerExceptions.card.entities.every((row) => discovery.modules
+    .some((module) => row.entity === module.entities.power)));
+  assert.ok(modulePowerExceptions.card.entities.every((row) => moduleEntityIds.has(row.entity)));
 });
 
 test("module view groups panels by inverter, MPPT, and string attributes", () => {

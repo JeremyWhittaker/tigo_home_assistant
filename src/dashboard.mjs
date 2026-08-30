@@ -79,7 +79,7 @@ function exceptionCard(conditions, title, body) {
   };
 }
 
-function unavailableCard(entities, modules = []) {
+function unavailableCard(entities, modules = [], { includeModulePower = true } = {}) {
   return {
     type: "entity-filter",
     state_filter: ["unknown", "unavailable"],
@@ -89,7 +89,9 @@ function unavailableCard(entities, modules = []) {
       entityRow(entities.energyToday, "Tigo energy today", "mdi:calendar-today"),
       entityRow(entities.energyLifetime, "Tigo lifetime energy", "mdi:counter"),
       ...modules.flatMap((module) => [
-        entityRow(module.entities.power, `${module.panelLabel} power`, "mdi:flash"),
+        includeModulePower
+          ? entityRow(module.entities.power, `${module.panelLabel} power`, "mdi:flash")
+          : null,
         entityRow(module.entities.energyToday, `${module.panelLabel} energy today`, "mdi:solar-panel"),
       ]),
     ]),
@@ -98,6 +100,30 @@ function unavailableCard(entities, modules = []) {
       title: "Unavailable readings",
       show_header_toggle: false,
       state_color: true,
+    },
+    grid_options: { columns: "full" },
+  };
+}
+
+function modulePowerExceptionsCard(entities, modules) {
+  return {
+    type: "conditional",
+    conditions: [{ condition: "state", entity: entities.dataStale, state: "off" }],
+    card: {
+      type: "entity-filter",
+      state_filter: ["unknown", "unavailable"],
+      show_empty: false,
+      entities: modules.map((module) => entityRow(
+        module.entities.power,
+        `${module.panelLabel} power`,
+        "mdi:flash",
+      )),
+      card: {
+        type: "entities",
+        title: "Modules missing current power",
+        show_header_toggle: false,
+        state_color: true,
+      },
     },
     grid_options: { columns: "full" },
   };
@@ -406,7 +432,8 @@ export function buildDashboard(discovery) {
               ]),
               grid_options: { columns: "full" },
             },
-            unavailableCard(e, discovery.modules),
+            unavailableCard(e, discovery.modules, { includeModulePower: false }),
+            modulePowerExceptionsCard(e, discovery.modules),
           ],
         },
         {

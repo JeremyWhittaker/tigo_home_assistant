@@ -27,7 +27,9 @@ The dashboard contains four core responsive views and one conditional view:
   remain side by side and are never summed or silently scaled.
 - **Diagnostics** — cloud health, exact source timing, unavailable readings,
   sanitized topology, configured array capacity, polling/version details, and
-  measurement guidance.
+  measurement guidance. When the entire cloud sample is stale, one source-level
+  warning replaces a repetitive list of every unavailable module-power sensor;
+  true per-module energy gaps remain visible.
 
 Only built-in Home Assistant cards are used. The generator does not install
 custom cards or frontend resources, hard-code generated entity IDs, expose
