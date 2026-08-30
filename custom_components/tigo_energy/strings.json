@@ -66,6 +66,7 @@
       "cloud_data_age": {"name": "Cloud data age"},
       "account_tier": {"name": "Account tier"},
       "module_count": {"name": "Configured modules"},
+      "rated_array_power": {"name": "Configured DC capacity"},
       "polling_interval": {"name": "Polling interval"},
       "integration_version": {"name": "Integration version"},
       "module_power": {"name": "Power"},

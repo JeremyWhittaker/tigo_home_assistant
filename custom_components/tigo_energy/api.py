@@ -503,15 +503,40 @@ class TigoCloudClient:
             )
         return tuple(item for item in payload if isinstance(item, Mapping))
 
+    async def get_build_configuration(self, system_id: int) -> Mapping[str, Any]:
+        """Return installer-entered panel ratings from the mobile build model."""
+
+        payload = await self._request_json(
+            "GET",
+            "/api/v3/tigobuild/config",
+            endpoint="build configuration",
+            params={"system_id": system_id, "resourceId": "config"},
+        )
+        if not isinstance(payload, Mapping):
+            raise TigoDataError(
+                "Tigo returned an invalid build configuration",
+                endpoint="build configuration",
+            )
+        return payload
+
     async def get_topology(self, system: TigoSystem | int) -> Topology:
         """Fetch and join layout/equipment metadata."""
 
         system_id = system.id if isinstance(system, TigoSystem) else int(system)
-        layout, equipments = await asyncio.gather(
+
+        async def optional_build_configuration() -> Mapping[str, Any]:
+            try:
+                return await self.get_build_configuration(system_id)
+            except TigoFeatureUnavailableError:
+                # Capacity is useful context, never a topology prerequisite.
+                return {}
+
+        layout, equipments, configuration = await asyncio.gather(
             self.get_layout(system_id),
             self.get_equipments(system_id),
+            optional_build_configuration(),
         )
-        return parse_topology(system, layout, equipments)
+        return parse_topology(system, layout, equipments, configuration)
 
     async def get_homepage(
         self,

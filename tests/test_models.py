@@ -36,6 +36,14 @@ def topology():
         systems[0],
         fixture("layout.json"),
         fixture("equipments.json"),
+        {
+            "system": {
+                "objects": [
+                    {"A": 101, "B": 2, "J": 400},
+                    {"A": 102, "B": 2, "J": {"value": 410, "unit": "W"}},
+                ]
+            }
+        },
     )
 
 
@@ -74,6 +82,9 @@ def test_topology_joins_non_alphabetic_equipment_order_by_serial() -> None:
     assert modules["101"].equipment_id == "A1"
     assert modules["101"].label == "A1"
     assert modules["101"].string_label == "String A"
+    assert modules["101"].rated_power_w == 400.0
+    assert modules["102"].rated_power_w == 410.0
+    assert parsed.rated_power_w == 810.0
     assert len(parsed.signature) == 64
     assert "REDACTED" not in parsed.signature
 
@@ -83,6 +94,28 @@ def test_models_are_frozen() -> None:
 
     with pytest.raises(FrozenInstanceError):
         parsed.modules[0].label = "changed"  # type: ignore[misc]
+
+
+def test_topology_omits_partial_or_invalid_configured_capacity() -> None:
+    systems = parse_systems(fixture("systems.json"))
+    parsed = parse_topology(
+        systems[0],
+        fixture("layout.json"),
+        fixture("equipments.json"),
+        {
+            "system": {
+                "objects": [
+                    {"A": 101, "B": 2, "J": 400},
+                    {"A": 102, "B": 2, "J": -1},
+                    {"A": "not-a-panel", "B": 4, "J": 12_000},
+                ]
+            }
+        },
+    )
+
+    assert parsed.by_object_id["101"].rated_power_w == 400.0
+    assert parsed.by_object_id["102"].rated_power_w is None
+    assert parsed.rated_power_w is None
 
 
 def test_panel_power_uses_order_and_scans_each_module_independently() -> None:

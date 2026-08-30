@@ -98,20 +98,27 @@ async def test_setup_registers_stable_entities_and_correct_state_metadata(
     snapshot_factory,
 ) -> None:
     info, snapshot = fresh_day_data(system_info_factory, snapshot_factory)
+    rated_topology = replace(
+        tigo_topology,
+        modules=tuple(
+            replace(module, rated_power_w=400.0) for module in tigo_topology.modules
+        ),
+        rated_power_w=800.0,
+    )
     await setup_integration(
         hass,
         config_entry,
         fake_cloud_client,
-        tigo_topology,
+        rated_topology,
         info,
         snapshot,
     )
     registry = er.async_get(hass)
     entry_entities = er.async_entries_for_config_entry(registry, config_entry.entry_id)
 
-    # 14 system sensors + 2 sensors for each of 2 modules + 2 health sensors.
-    assert len(entry_entities) == 20
-    assert len({entity.unique_id for entity in entry_entities}) == 20
+    # 15 system sensors + 2 sensors for each of 2 modules + 2 health sensors.
+    assert len(entry_entities) == 21
+    assert len({entity.unique_id for entity in entry_entities}) == 21
 
     current_id = entity_id_for(registry, "sensor", "1_current_power")
     current = state_for(hass, current_id)
@@ -145,6 +152,14 @@ async def test_setup_registers_stable_entities_and_correct_state_metadata(
     assert module_count.attributes["inverter_count"] == 1
     assert module_count.attributes["mppt_count"] == 1
     assert module_count.attributes["string_count"] == 1
+
+    capacity_id = entity_id_for(registry, "sensor", "1_rated_array_power")
+    capacity = state_for(hass, capacity_id)
+    assert capacity.state == "800.0"
+    assert capacity.attributes[ATTR_DEVICE_CLASS] == "power"
+    assert capacity.attributes[ATTR_UNIT_OF_MEASUREMENT] == UnitOfPower.WATT
+    assert capacity.attributes["rated_modules"] == 2
+    assert registry.async_get(capacity_id).entity_category is EntityCategory.DIAGNOSTIC
 
     interval_id = entity_id_for(registry, "sensor", "1_polling_interval")
     version_id = entity_id_for(registry, "sensor", "1_integration_version")
@@ -315,11 +330,11 @@ async def test_topology_refresh_adds_new_module_entities_once(
         ).state
         == "1.1"
     )
-    assert len(er.async_entries_for_config_entry(registry, config_entry.entry_id)) == 22
+    assert len(er.async_entries_for_config_entry(registry, config_entry.entry_id)) == 23
 
     coordinator.async_set_updated_data(coordinator.data)
     await hass.async_block_till_done()
-    assert len(er.async_entries_for_config_entry(registry, config_entry.entry_id)) == 22
+    assert len(er.async_entries_for_config_entry(registry, config_entry.entry_id)) == 23
 
 
 @pytest.mark.asyncio

@@ -224,6 +224,56 @@ def test_etag_cache_is_lru_bounded() -> None:
     assert client.diagnostics["conditional_cache_entries"] == 64
 
 
+def test_topology_includes_installer_configured_array_capacity() -> None:
+    session = FakeSession()
+    client = client_with_login(session)
+    session.add(
+        "GET", "/api/v3/systems/layout", FakeResponse(200, fixture("layout.json"))
+    )
+    session.add(
+        "GET", "/api/v4/equipments", FakeResponse(200, fixture("equipments.json"))
+    )
+    session.add(
+        "GET",
+        "/api/v3/tigobuild/config",
+        FakeResponse(
+            200,
+            {
+                "system": {
+                    "objects": [
+                        {"A": 101, "B": 2, "J": 400},
+                        {"A": 102, "B": 2, "J": 410},
+                    ]
+                }
+            },
+        ),
+    )
+
+    topology = run(client.get_topology(1))
+
+    assert topology.rated_power_w == 810.0
+    config_call = next(
+        call for call in session.calls if call["path"].endswith("/tigobuild/config")
+    )
+    assert config_call["params"] == {"system_id": 1, "resourceId": "config"}
+
+
+def test_topology_keeps_capacity_optional_when_build_config_is_unavailable() -> None:
+    session = FakeSession()
+    client = client_with_login(session)
+    session.add(
+        "GET", "/api/v3/systems/layout", FakeResponse(200, fixture("layout.json"))
+    )
+    session.add(
+        "GET", "/api/v4/equipments", FakeResponse(200, fixture("equipments.json"))
+    )
+    session.add("GET", "/api/v3/tigobuild/config", FakeResponse(404))
+
+    topology = run(client.get_topology(1))
+
+    assert topology.rated_power_w is None
+
+
 def test_401_relogs_in_and_retries_original_request_exactly_once() -> None:
     session = FakeSession()
     session.add(

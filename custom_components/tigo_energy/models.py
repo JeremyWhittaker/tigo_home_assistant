@@ -67,6 +67,7 @@ class Module:
     string_label: str = "String"
     equipment_id: str | None = None
     equipment_index: int | None = None
+    rated_power_w: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,6 +80,7 @@ class Topology:
     inverter_count: int = 0
     mppt_count: int = 0
     string_count: int = 0
+    rated_power_w: float | None = None
     signature: str = ""
 
     @property
@@ -577,10 +579,52 @@ def _topology_system(system: TigoSystem | int, layout: Any) -> TigoSystem:
     )
 
 
+def _configured_panel_ratings(payload: Any) -> dict[str, float]:
+    """Return installer-configured module nameplate ratings keyed by object ID.
+
+    The build configuration is an unofficial mobile endpoint whose compact
+    fields use ``B=2`` for a panel, ``A`` for its object ID, and ``J`` for its
+    watt rating. Named aliases keep the parser tolerant of a future expanded
+    response without weakening the requirement that the object is a panel.
+    """
+
+    root = _container(payload)
+    system = _mapping(_field(root, "system")) or root
+    objects = _sequence(_field(system, "objects", "items", "rows"))
+    ratings: dict[str, float] = {}
+    for raw in objects:
+        item = _mapping(raw)
+        type_value = _field(item, "B", "object_type", "objectType", "kind")
+        numeric_type = _finite_float(type_value)
+        type_name = str(type_value or "").casefold()
+        if numeric_type != 2 and not any(
+            word in type_name for word in ("panel", "module", "optimizer")
+        ):
+            continue
+        identifier = _field(item, "A", "object_id", "objectId", "id")
+        rating = _quantity(
+            _field(
+                item,
+                "J",
+                "watt_rating",
+                "wattRating",
+                "rated_power",
+                "ratedPower",
+            ),
+            target="w",
+            default_unit="W",
+        )
+        if identifier is None or rating is None or not 0 < rating <= 10_000:
+            continue
+        ratings[str(identifier)] = rating
+    return ratings
+
+
 def parse_topology(
     system: TigoSystem | int,
     layout: Any,
     equipments: Any,
+    configuration: Any = None,
 ) -> Topology:
     """Join layout metadata with equipment identities without guessing order[]."""
 
@@ -596,6 +640,7 @@ def parse_topology(
         for item in layout_modules
         if item.get("label")
     }
+    configured_ratings = _configured_panel_ratings(configuration)
 
     equipment_modules: list[tuple[int, JsonMapping]] = []
     cca_uids: list[str] = []
@@ -645,6 +690,9 @@ def parse_topology(
             else _field(equipment, "object_id", "objectId", "id")
         )
         object_id = str(object_raw if object_raw is not None else equipment_id)
+        rated_power_w = configured_ratings.get(object_id) or configured_ratings.get(
+            equipment_id
+        )
         modules.append(
             Module(
                 object_id=object_id,
@@ -674,6 +722,7 @@ def parse_topology(
                 ),
                 equipment_id=equipment_id,
                 equipment_index=equipment_index,
+                rated_power_w=rated_power_w,
             )
         )
 
@@ -703,6 +752,7 @@ def parse_topology(
                 mppt_label=str(layout_module.get("mppt_label", "MPPT")),
                 string_label=str(layout_module.get("string_label", "String")),
                 equipment_id=str(layout_module.get("label") or object_raw),
+                rated_power_w=configured_ratings.get(str(object_raw)),
             )
         )
 
@@ -710,9 +760,20 @@ def parse_topology(
     if len(identifiers) != len(set(identifiers)):
         raise TigoDataError("Tigo topology contains duplicate module identifiers")
 
+    signature_rows.extend(
+        [module.object_id, str(module.rated_power_w), "rated_power"]
+        for module in modules
+        if module.rated_power_w is not None
+    )
     signature = hashlib.sha256(
         json.dumps(signature_rows, separators=(",", ":"), sort_keys=True).encode()
     ).hexdigest()
+    module_ratings = [module.rated_power_w for module in modules]
+    rated_power_w = (
+        sum(rating for rating in module_ratings if rating is not None)
+        if module_ratings and all(rating is not None for rating in module_ratings)
+        else None
+    )
     return Topology(
         system=system_model,
         modules=tuple(modules),
@@ -720,6 +781,7 @@ def parse_topology(
         inverter_count=inverter_count,
         mppt_count=mppt_count,
         string_count=string_count,
+        rated_power_w=rated_power_w,
         signature=signature,
     )
 

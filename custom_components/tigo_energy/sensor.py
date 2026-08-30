@@ -123,6 +123,15 @@ SYSTEM_SENSORS: tuple[TigoSensorDescription, ...] = (
         value_fn=lambda data: len(data.topology.modules),
     ),
     TigoSensorDescription(
+        key="rated_array_power",
+        translation_key="rated_array_power",
+        device_class=SensorDeviceClass.POWER,
+        native_unit_of_measurement=UnitOfPower.WATT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        suggested_display_precision=0,
+        value_fn=lambda data: data.topology.rated_power_w,
+    ),
+    TigoSensorDescription(
         key="polling_interval",
         translation_key="polling_interval",
         device_class=SensorDeviceClass.DURATION,
@@ -152,7 +161,7 @@ async def async_setup_entry(
         TigoSystemSensor(coordinator, description) for description in SYSTEM_SENSORS
     ]
     known_module_ids: set[str] = set()
-    module_metadata: dict[str, tuple[str, str | None, str, str, str]] = {}
+    module_metadata: dict[str, tuple[str, str | None, str, str, str, float | None]] = {}
 
     def module_entities(module: Module) -> tuple[TigoModuleSensor, TigoModuleSensor]:
         object_id = _module_object_id(module)
@@ -241,6 +250,10 @@ class TigoSystemSensor(CoordinatorEntity[TigoCoordinator], SensorEntity):
                     "string_count": data.topology.string_count,
                 }
             )
+        if self.entity_description.key == "rated_array_power":
+            attributes["rated_modules"] = sum(
+                module.rated_power_w is not None for module in data.topology.modules
+            )
         if self.entity_description.key == "account_tier":
             attributes["features"] = sorted(data.system_info.features)
         return attributes
@@ -310,6 +323,7 @@ class TigoModuleSensor(CoordinatorEntity[TigoCoordinator], SensorEntity):
             "inverter_label": module.inverter_label,
             "mppt_label": module.mppt_label,
             "string_label": module.string_label,
+            "rated_power_w": module.rated_power_w,
             "sample_time": (
                 sample_time.isoformat()
                 if isinstance(sample_time, datetime)
@@ -352,7 +366,9 @@ def _module_label(module: Any) -> str:
     return str(getattr(module, "label", None) or f"Module {_module_object_id(module)}")
 
 
-def _module_metadata(module: Module) -> tuple[str, str | None, str, str, str]:
+def _module_metadata(
+    module: Module,
+) -> tuple[str, str | None, str, str, str, float | None]:
     """Return integration-owned metadata used to detect topology changes."""
     return (
         _module_label(module),
@@ -360,6 +376,7 @@ def _module_metadata(module: Module) -> tuple[str, str | None, str, str, str]:
         module.inverter_label,
         module.mppt_label,
         module.string_label,
+        module.rated_power_w,
     )
 
 
