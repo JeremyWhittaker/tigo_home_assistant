@@ -30,7 +30,6 @@ const MODULE_ENTITIES = Object.freeze({
 const EG4_COMPARISON_ENTITIES = Object.freeze({
   pvPower: { domain: "sensor", name: "PV Total Power", deviceClass: "power", units: ["W"], stateClasses: ["measurement"] },
   energyToday: { domain: "sensor", name: "Yield", deviceClass: "energy", units: ["kWh"], stateClasses: ["total_increasing"] },
-  energyLifetime: { domain: "sensor", name: "Yield (Lifetime)", deviceClass: "energy", units: ["kWh"], stateClasses: ["total", "total_increasing"] },
 });
 
 function normalize(value) {

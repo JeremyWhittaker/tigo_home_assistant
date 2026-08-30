@@ -183,7 +183,7 @@ function moduleSection(groupLabel, modules) {
 function comparisonView(discovery) {
   const tigo = discovery.entities;
   const eg4 = discovery.comparison.entities;
-  const source = `${discovery.comparison.provider} ${discovery.comparison.model}`.trim();
+  const source = discovery.comparison.provider;
   return {
     title: "Compare",
     path: "compare",
@@ -230,8 +230,8 @@ function comparisonView(discovery) {
             type: "statistics-graph",
             title: "Daily solar energy · 30 days",
             entities: [
-              entityRow(tigo.energyLifetime, "Tigo production"),
-              entityRow(eg4.energyLifetime, `${source} solar yield`),
+              entityRow(tigo.energyToday, "Tigo daily production"),
+              entityRow(eg4.energyToday, `${source} daily solar yield`),
             ],
             stat_types: ["change"],
             period: "day",
@@ -338,7 +338,7 @@ export function buildDashboard(discovery) {
             {
               type: "statistics-graph",
               title: "Daily production · 30 days",
-              entities: [entityRow(e.energyLifetime, "Tigo production")],
+              entities: [entityRow(e.energyToday, "Tigo daily production")],
               stat_types: ["change"],
               period: "day",
               days_to_show: 30,

@@ -230,6 +230,10 @@ test("dashboard uses responsive native-only, read-only views for variable module
     assert.ok(!stableString(dashboard.views.find((view) => view.path === "overview"))
       .includes("sample within freshness window"));
     assert.ok(validation.references.every((entityId) => data.states.some((state) => state.entity_id === entityId)));
+    const statisticsCards = dashboard.views.flatMap((view) => view.sections)
+      .flatMap((section) => section.cards)
+      .filter((card) => card.type === "statistics-graph");
+    assert.ok(statisticsCards.every((card) => card.stat_types[0] === "change"));
   }
 });
 
@@ -316,7 +320,6 @@ test("Compare is enabled only for one serial-matched EG4 device with strict tota
   assert.deepEqual(discovery.comparison.entities, {
     pvPower: eg4.pv_power,
     energyToday: eg4.yield,
-    energyLifetime: eg4.yield_lifetime,
   });
   const dashboard = buildDashboard(discovery);
   assert.deepEqual(dashboard.views.map((view) => view.path), [
@@ -326,6 +329,12 @@ test("Compare is enabled only for one serial-matched EG4 device with strict tota
   assert.ok(serialized.includes(eg4.pv_power));
   assert.ok(!serialized.includes(eg4.pv1));
   assert.ok(!serialized.includes(eg4.serial));
+  const compareStatistics = dashboard.views.find((view) => view.path === "compare").sections
+    .flatMap((section) => section.cards)
+    .find((card) => card.type === "statistics-graph");
+  assert.deepEqual(compareStatistics.stat_types, ["change"]);
+  assert.ok(compareStatistics.entities.some((row) => row.entity === eg4.yield));
+  assert.ok(!compareStatistics.entities.some((row) => row.entity === eg4.yield_lifetime));
 
   const incompatible = fixture({ moduleCount: 2 });
   const bad = attachEg4(incompatible);

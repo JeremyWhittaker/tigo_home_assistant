@@ -12,14 +12,22 @@ The deployed path is:
 
 ## Design
 
-The dashboard contains four responsive views:
+The dashboard contains four core responsive views and one conditional view:
 
-- **Overview** — current power, daily/lifetime production, reporting-module
-  count, freshness state, and recent power history.
-- **Energy** — Tigo day/week/month/year/lifetime totals and Tigo-only statistics.
-- **Modules** — module power and daily energy grouped from integration topology.
-- **System** — connectivity, source age, account/topology diagnostics, polling
-  cadence, and integration version.
+- **Overview** — latest Tigo power, observed peak, current-day energy,
+  reporting-module count, source age, and 24-hour power history. Normal cloud
+  health does not consume a card; connection and stale-data exceptions appear
+  only when action is needed.
+- **Energy** — day/week/month/year/lifetime totals, daily Recorder history, and
+  a 48-hour power trend without policy or diagnostic copy.
+- **Modules** — compact per-string lists for module power and daily energy,
+  grouped from topology rather than generated entity names.
+- **Compare** — present only after an exact Tigo/EG4 inverter identity match and
+  strict validation of EG4 total-PV power and daily solar-yield metadata. Values
+  remain side by side and are never summed or silently scaled.
+- **Diagnostics** — cloud health, exact source timing, unavailable readings,
+  sanitized topology, configured array capacity, polling/version details, and
+  measurement guidance.
 
 Only built-in Home Assistant cards are used. The generator does not install
 custom cards or frontend resources, hard-code generated entity IDs, expose
@@ -56,6 +64,20 @@ Home Assistant device ID or Tigo system ID:
 ```bash
 export TIGO_SYSTEM_DEVICE_ID='123456'
 ```
+
+EG4 matching is automatic only when one numeric inverter serial in the Tigo
+topology exactly matches an `eg4_web_monitor` device identifier and that device
+owns the required compatible total sensors. A linked station or battery device
+is not eligible. If automatic identity is unavailable, an exact Home Assistant
+EG4 device ID or device name can be selected explicitly:
+
+```bash
+export EG4_INVERTER_DEVICE_ID='home-assistant-device-id'
+```
+
+The selector does not bypass unit/state-class validation, and multi-inverter
+Tigo systems remain fail-closed because one EG4 inverter would not represent a
+whole-system Tigo total.
 
 `HA_TIMEOUT_MS` can override the default 15,000 ms API timeout for a slow
 connection.
@@ -109,8 +131,9 @@ storage if it may be needed after a reboot. Although mode `0600` limits local
 access, the backup can reveal entity IDs and household configuration metadata;
 never commit it to Git.
 
-Open `/tigo-energy/overview` after a successful deployment. A sparse history
-graph immediately after installation is expected because v0.1 does not backfill
+Open **Tigo Energy** from the Home Assistant sidebar or navigate directly to
+`/tigo-energy/overview` after a successful deployment. A sparse history graph
+immediately after installation is expected because v0.2 does not backfill
 Home Assistant Recorder history.
 
 ## Restore
@@ -139,15 +162,16 @@ Before treating a public or live deployment as complete, inspect at least:
 - desktop at approximately 1440 × 1000;
 - mobile at approximately 390 × 844;
 - light and dark themes;
-- all four views and their full scroll height;
+- every deployed view and its full scroll height;
 - current, stale, unavailable, and partial-reporting presentation;
 - browser console and Home Assistant/Lovelace errors;
 - links/navigation and the `/tigo-energy/overview` direct route;
 - public copy for development labels, placeholders, or credential data.
 
-The repository's visual-QA utility automates all four views at the desktop and
-mobile sizes in light/dark color modes. It uses Chromium's DevTools protocol and
-creates mode-`0600` screenshots plus a JSON report:
+The repository's visual-QA utility reads the deployed view list, then automates
+every view at the desktop and mobile sizes in light/dark color modes. It uses
+Chromium's DevTools protocol and creates mode-`0600` screenshots plus a JSON
+report:
 
 ```bash
 # Optional when Chromium is not installed at /usr/bin/chromium-browser
@@ -167,8 +191,25 @@ production to Home Assistant Energy will count that production twice. Choose one
 authoritative source for each physical array.
 
 This does not prevent using the Tigo dashboard alongside an EG4 dashboard. The
-Tigo views query only Tigo entities and do not sum them with the global Energy
-configuration.
+optional Compare view is observational: it uses EG4 **PV Total Power** and
+**Yield**, displays each source independently, and never changes the global
+Energy configuration.
+
+## Reading Tigo versus EG4
+
+- Tigo cloud measurements are delayed and normally have 15-minute granularity;
+  use **Source age**, not the Home Assistant entity refresh time.
+- Compare **Tigo cloud system power** with EG4 **PV Total Power**. Do not compare
+  it with load, grid import/export, AC output, or one PV input.
+- Daily charts use Recorder's `change` statistic on each source's daily-energy
+  sensor. This avoids a one-time lifetime-counter initialization discontinuity
+  and does not manufacture historical data before installation.
+- Completed-day energy is more meaningful than unsynchronized live values.
+- The displayed **Configured DC capacity** is the sum of verified panel ratings
+  from the Tigo build configuration. Observed peak is not nameplate, and a
+  rounded chart-axis tick is not a cap.
+- An inverter label such as 18kPV describes input capability, not actual array
+  size or continuous AC output.
 
 ## Common failures
 
@@ -180,5 +221,7 @@ configuration.
 | No Tigo integration found | Configure the integration and wait for its first successful refresh. |
 | Required system entities missing | Reload/update the integration before regenerating the plan. |
 | Some module values unavailable | Compare Tigo Cloud data; missing values are intentionally not coerced to zero. |
+| Compare view is absent | Confirm one EG4 inverter owns compatible `PV Total Power` (W, measurement) and `Yield` (kWh, total_increasing) sensors; use `EG4_INVERTER_DEVICE_ID` only for an exact intended device. |
+| Daily chart is sparse | Recorder starts when the integration/entities exist; the dashboard does not fabricate a historical backfill. |
 | Restore reports drift | Review current changes, preserve them if needed, and use `--force` only intentionally. |
 | Old sample displayed as stale | Check the CCA/Tigo cloud path; increasing poll frequency cannot create a new source sample. |

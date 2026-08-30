@@ -7,19 +7,19 @@ units, physical measurement points, and source timestamps are verified.
 
 | ID | Review item | Status | Evidence |
 | --- | --- | --- | --- |
-| UX-01 | Make the Overview page concise, professional, and useful at a glance on desktop and mobile. | pending | — |
-| UX-02 | Move explanatory and diagnostic copy off Overview into a dedicated diagnostics view. | pending | — |
-| UX-03 | Keep source freshness visible without allowing cloud-health details to dominate normal production monitoring. | pending | — |
-| UX-04 | Preserve useful Energy and module-level views while improving hierarchy, labels, and scanability. | pending | — |
-| UX-05 | Use only native, read-only Home Assistant cards and retain transactional backup/restore behavior. | pending | — |
-| MEAS-01 | Identify the exact Tigo and EG4 power/energy entities, units, state classes, and physical measurement points. | pending | — |
-| MEAS-02 | Compare Tigo and EG4 using source-time-aligned samples so the Tigo cloud delay is not mistaken for a calculation error. | pending | — |
-| MEAS-03 | Verify that Tigo system power agrees with the valid module-power sum within the documented source behavior. | pending | — |
-| MEAS-04 | Explain whether the apparent 6 kW value is a chart scale, observed daily peak, configured cap, or equipment limit. | pending | — |
-| MEAS-05 | Distinguish EG4 18kPV model/input capability, inverter AC rating, installed array nameplate, and observed production. | pending | — |
-| SAFE-01 | Do not combine Tigo and EG4 energy totals or change Home Assistant Energy sources, avoiding double counting. | pending | — |
-| QA-01 | Add focused generator/discovery tests and pass the complete Python and Node test suites. | pending | — |
-| QA-02 | Deploy through the documented transaction, validate read-back, and inspect every view in light/dark desktop/mobile rendering. | pending | — |
-| QA-03 | Verify public copy, navigation, direct routes, console/Lovelace errors, and secret-free generated configuration. | pending | — |
-| DOC-01 | Update README and dashboard/data-model documentation with the final design and measurement guidance. | pending | — |
-| REL-01 | Commit only task-owned changes, push them publicly, and publish/install a coherent release if versioned code changes. | pending | — |
+| UX-01 | Make the Overview page concise, professional, and useful at a glance on desktop and mobile. | implemented | `src/dashboard.mjs`; 1440×1000 and 390×844 light/dark captures in `/tmp/tigo-dashboard-review-final` |
+| UX-02 | Move explanatory and diagnostic copy off Overview into a dedicated diagnostics view. | implemented | `src/dashboard.mjs`: Overview has exception-only notices; `/system` is titled Diagnostics |
+| UX-03 | Keep source freshness visible without allowing cloud-health details to dominate normal production monitoring. | implemented | Overview source-age badge plus conditional connection/stale cards; full status in Diagnostics |
+| UX-04 | Preserve useful Energy and module-level views while improving hierarchy, labels, and scanability. | implemented | Compact two-list module sections, four live topology groups, daily-energy Recorder charts |
+| UX-05 | Use only native, read-only Home Assistant cards and retain transactional backup/restore behavior. | implemented | `npm run check`; deployer rejects custom/control cards; two live transactional updates and read-backs passed |
+| MEAS-01 | Identify the exact Tigo and EG4 power/energy entities, units, state classes, and physical measurement points. | implemented | `/tmp/jeremy-foreman-supervisor/tigo-dashboard-review-20260830/measurement-audit.md`; strict metadata contract in `src/discovery.mjs` |
+| MEAS-02 | Compare Tigo and EG4 using source-time-aligned samples so the Tigo cloud delay is not mistaken for a calculation error. | implemented | Matched-history audit and Compare view cadence warning; completed-day comparison documented |
+| MEAS-03 | Verify that Tigo system power agrees with the valid module-power sum within the documented source behavior. | implemented | Live audit: system 5,682 W versus module sum 5,678 W (0.07% difference) |
+| MEAS-04 | Explain whether the apparent 6 kW value is a chart scale, observed daily peak, configured cap, or equipment limit. | implemented | Diagnostics capacity guidance and README measurement table; observed peak about 5.7 kW and graph auto-scale verified |
+| MEAS-05 | Distinguish EG4 18kPV model/input capability, inverter AC rating, installed array nameplate, and observed production. | implemented | Tigo build configuration verified 44 × 400 W = 17.6 kW DC; official specifications linked in README |
+| SAFE-01 | Do not combine Tigo and EG4 energy totals or change Home Assistant Energy sources, avoiding double counting. | implemented | Read-only validation, fail-closed matching, independent chart series, and Diagnostics warning |
+| QA-01 | Add focused generator/discovery tests and pass the complete Python and Node test suites. | implemented | 16 Node tests and 66 Python tests passed; final release run still required after version bump |
+| QA-02 | Deploy through the documented transaction, validate read-back, and inspect every view in light/dark desktop/mobile rendering. | pending | 20-case/58-screenshot passes found and removed a lifetime-statistics artifact; repeat after final daily-series deployment |
+| QA-03 | Verify public copy, navigation, direct routes, console/Lovelace errors, and secret-free generated configuration. | pending | Navigation/sidebar/direct routes and Lovelace errors passed; final secret scan and post-release render remain |
+| DOC-01 | Update README and dashboard/data-model documentation with the final design and measurement guidance. | implemented | `README.md`, `docs/DASHBOARD.md`, `docs/DATA_MODEL.md`, and `docs/ARCHITECTURE.md` |
+| REL-01 | Commit only task-owned changes, push them publicly, and publish/install a coherent release if versioned code changes. | pending | Checkpoints `cd95ba9` and `ab07d12` pushed; v0.2.0 release/install remains |

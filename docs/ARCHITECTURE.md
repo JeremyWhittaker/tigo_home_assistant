@@ -138,6 +138,11 @@ Assistant registries, generates native Lovelace configuration, takes a private
 backup, writes transactionally, validates a read-back, and rolls back after a
 failed deployment.
 
+The generator may discover an EG4 inverter for observational comparison, but it
+fails closed unless one numeric inverter identity and the required total-sensor
+semantics match exactly. It never aggregates Tigo and EG4 or treats a display
+name as sufficient identity.
+
 It does not alter the global Energy preferences or install custom cards. See
 [DASHBOARD.md](DASHBOARD.md).
 
@@ -146,7 +151,7 @@ It does not alter the global Energy preferences or install custom cards. See
 - Config-entry schema changes require an explicit Home Assistant migration.
 - Entity unique IDs are persistent API and must not be changed without a
   migration.
-- Endpoint/payload changes may be patched within `0.1.x` while entity semantics
+- Endpoint/payload changes may be patched within `0.2.x` while entity semantics
   remain stable.
 - Removing or changing an entity meaning requires release notes and an upgrade
   path.
@@ -154,5 +159,5 @@ It does not alter the global Energy preferences or install custom cards. See
 
 The minimum supported Home Assistant release is 2025.1.0. The manifest, HACS
 metadata, CI compatibility matrix, and documented minimum must remain aligned
-for every release; live v0.1 acceptance additionally targets Home Assistant
+for every release; live v0.2 acceptance additionally targets Home Assistant
 2026.8.3.

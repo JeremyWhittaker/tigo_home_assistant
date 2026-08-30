@@ -24,11 +24,15 @@ send control commands.
 - Home Assistant UI setup, system discovery, reauthentication, and poll options.
 - System power, today's peak power, and production totals for today, week,
   month, year, and lifetime.
+- Configured DC nameplate capacity when every panel has a valid wattage in the
+  Tigo build configuration.
 - Power and daily energy for every module reported across all system CCAs.
 - Separate cloud-connectivity and data-freshness status.
 - Stable entity and device identities derived from Tigo system/module IDs.
 - Automatic discovery of newly added modules during the daily topology refresh.
-- A responsive, optional dashboard built entirely with Home Assistant cards.
+- A responsive, optional dashboard built entirely with Home Assistant cards,
+  including a fail-closed EG4 comparison when one inverter can be identified
+  exactly.
 - Sanitized diagnostics, automated tests, HACS validation, and hassfest checks.
 
 This integration is read-only. It cannot change inverter, optimizer, gateway,
@@ -45,6 +49,31 @@ at night. Faster checks can discover a newly published sample sooner, but they
 cannot make Tigo produce real-time data. The integration preserves Tigo's source
 timestamp, reports the data age, and marks daylight data stale after 45 minutes.
 It never presents an old sample as live data.
+
+## Understand power, capacity, and the 18kPV label
+
+These values answer different questions and should not be treated as
+interchangeable limits:
+
+| Reading | Meaning |
+| --- | --- |
+| Configured DC capacity | Sum of the panel wattages stored in the Tigo build configuration; this is array nameplate, not expected real-time output |
+| Tigo current power | Latest delayed Tigo cloud system reading, or the valid module-sample sum when the homepage value is absent |
+| Observed peak today | Highest Tigo sample seen during the current Tigo day; this is telemetry, not an equipment rating |
+| Graph-axis maximum | A display scale chosen automatically by Home Assistant; a rounded tick such as 6 kW is not a configured cap |
+| EG4 18kPV | Inverter model/capability label; the inverter supports 18 kW utilized PV input and 12 kW total continuous AC output, but that does not define the installed array size |
+
+The dashboard never doubles Tigo to force agreement with an inverter. Its
+optional **Compare** view uses only an exactly matched EG4 device, validates the
+total-PV and solar-yield entity semantics, and presents the sources side by
+side. Tigo and EG4 update on different cadences, so completed-day energy is a
+fairer comparison than two screen values captured at the same wall-clock time.
+A persistent large discrepancy should be investigated as a monitoring or
+commissioning issue, not hidden with a correction factor.
+
+See the official [EG4 18kPV specifications](https://eg4electronics.com/wp-content/uploads/2024/04/EG4-18KPV-12LV-Spec-Sheet.pdf),
+[Tigo monitoring terminology](https://support.tigoenergy.com/hc/en-us/articles/205575867-Commonly-Used-Terms),
+and [Tigo cloud-update guidance](https://support.tigoenergy.com/hc/en-us/articles/12583024225043-How-fast-does-data-update-in-the-EI-portal-and-does-Premium-speed-up-this-process).
 
 ## Installation
 
@@ -121,6 +150,7 @@ The system device provides:
 | Data stale | binary | Whether daylight data has exceeded the freshness limit |
 | Account tier | text | Basic/premium capability classification reported by Tigo |
 | Module count | count | Modules in the cached system topology |
+| Configured DC capacity | W | Sum of verified per-module panel ratings; unavailable unless every configured module has a rating |
 | Polling interval | min | Cadence currently selected for daylight/night conditions |
 | Integration version | text | Installed custom-integration version |
 
@@ -135,7 +165,9 @@ a particular generated entity ID.
 ## Dashboard
 
 The optional dashboard includes **Overview**, **Energy**, **Modules**, and
-**System** views at `/tigo-energy/overview`. It uses only built-in Home Assistant
+**Diagnostics** views at `/tigo-energy/overview`. A fifth **Compare** view is
+added only when the generator can prove one Tigo-to-EG4 inverter match and
+validate the required EG4 total sensors. It uses only built-in Home Assistant
 cards and does not install frontend resources.
 
 See [Dashboard installation and recovery](docs/DASHBOARD.md) for installation,
@@ -148,11 +180,11 @@ separate, explicit action.
 The dashboard does not modify Home Assistant's global Energy configuration. If
 an EG4 or another inverter integration already represents the same array, adding
 Tigo production there as a second solar source will double-count production.
-Choose exactly one authoritative source for a physical array. The Tigo-only
-dashboard remains safe to use alongside EG4 because its charts do not combine
-the two sources.
+Choose exactly one authoritative source for a physical array. The optional
+Compare charts remain safe because they display the sources separately and
+never add them together.
 
-Version 0.1 does not backfill historical Recorder statistics. Tigo's current
+Version 0.2 does not backfill historical Recorder statistics. Tigo's current
 day/week/month/year/lifetime totals appear after setup, while history charts
 accumulate samples from the time the integration is installed.
 
@@ -210,7 +242,7 @@ backup practices. See [SECURITY.md](SECURITY.md) for the disclosure policy and
 
 ## Project status
 
-This is an early `0.1.x` integration built against behavior observed on Tigo
+This is an early `0.2.x` integration built against behavior observed on Tigo
 Basic accounts. Endpoint changes, account differences, and previously unseen
 topologies are expected. Read the release notes before upgrading and retain a
 working Home Assistant backup.

@@ -1,7 +1,7 @@
 # Data model
 
 Tigo Energy Cloud normalizes several Tigo mobile-endpoint responses into one
-coherent Home Assistant snapshot. This document defines the v0.1 entity
+coherent Home Assistant snapshot. This document defines the v0.2 entity
 semantics so dashboards and automations do not have to understand raw payloads.
 
 ## Identity and hierarchy
@@ -35,6 +35,7 @@ and registry relationships are the stable interface used by the dashboard.
 | Cloud data age | min | duration | measurement | Current time minus source timestamp |
 | Cloud connected | binary | connectivity | — | Latest cloud update request succeeded |
 | Data stale | binary | problem | — | Daylight sample age exceeds the freshness limit |
+| Configured DC capacity | W | power | — | Sum of all per-module ratings from the Tigo build configuration; unavailable unless every configured module is rated |
 
 Day/week/month/year and module-daily counters use `total_increasing`; Home
 Assistant recognizes the drop at a period boundary as a new metering cycle.
@@ -59,6 +60,12 @@ Each discovered module has two enabled entities:
 Useful topology/rating information belongs in device information or stable
 attributes only when it is non-sensitive. Passwords, tokens, gateway request
 identifiers, addresses, and raw serial/topology payloads are never attributes.
+The optional `rated_power_w` attribute is the build-configured panel rating; it
+is not the TS4 optimizer's maximum input rating and is not a live measurement.
+
+The system capacity sensor is deliberately unavailable when even one module
+rating is missing. A partial sum would look authoritative while understating
+the installed nameplate.
 
 ## Module sample alignment
 
@@ -125,14 +132,20 @@ problems cannot destroy names, history, or automation references.
 ## Recorder and Energy behavior
 
 Recorder begins recording integration states when the integration is installed.
-Version 0.1 does not import Tigo's calendar/history response into past Home
+Version 0.2 does not import Tigo's calendar/history response into past Home
 Assistant statistics.
 
 The lifetime entity is technically suitable for long-term energy statistics,
 but users must not add it as a second solar source when another integration
 already measures the same physical production. The supplied dashboard reads
-only Tigo entities and never edits the global Home Assistant Energy
-configuration.
+Tigo entities and, when identity/metadata can be proven, displays selected EG4
+totals alongside them. It never adds sources together or edits the global Home
+Assistant Energy configuration.
+
+Dashboard daily bars use Recorder's daily `change` for the `Energy today`
+sensor. This matches the counter's daily reset and avoids presenting an
+integration-start discontinuity in an existing lifetime counter as production.
+No chart should infer missing days or convert unavailable values to zero.
 
 ## Sanitized diagnostics
 
