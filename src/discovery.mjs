@@ -1,5 +1,6 @@
 const ENTITY_ID_PATTERN = /^[a-z_]+\.[a-z0-9_]+$/;
 const PLATFORM = "tigo_energy";
+const EG4_PLATFORM = "eg4_web_monitor";
 
 const SYSTEM_ENTITIES = Object.freeze({
   currentPower: { domain: "sensor", suffix: "current_power", names: ["Current Power", "System Power"], required: true },
@@ -14,6 +15,7 @@ const SYSTEM_ENTITIES = Object.freeze({
   cloudDataAge: { domain: "sensor", suffix: "cloud_data_age", names: ["Cloud Data Age"], required: true },
   accountTier: { domain: "sensor", suffix: "account_tier", names: ["Account Tier"], required: false },
   moduleCount: { domain: "sensor", suffix: "module_count", names: ["Module Count"], required: false },
+  ratedArrayPower: { domain: "sensor", suffix: "rated_array_power", names: ["Configured DC Capacity", "Rated Array Power"], required: false },
   pollingInterval: { domain: "sensor", suffix: "polling_interval", names: ["Polling Interval"], required: false },
   integrationVersion: { domain: "sensor", suffix: "integration_version", names: ["Integration Version"], required: false },
   cloudConnected: { domain: "binary_sensor", suffix: "cloud_connected", names: ["Cloud Connected", "API Connectivity"], required: true },
@@ -23,6 +25,12 @@ const SYSTEM_ENTITIES = Object.freeze({
 const MODULE_ENTITIES = Object.freeze({
   power: { domain: "sensor", suffix: "power", names: ["Power", "Module Power"], required: true },
   energyToday: { domain: "sensor", suffix: "energy_today", names: ["Energy Today", "Module Energy Today"], required: true },
+});
+
+const EG4_COMPARISON_ENTITIES = Object.freeze({
+  pvPower: { domain: "sensor", name: "PV Total Power", deviceClass: "power", units: ["W"], stateClasses: ["measurement"] },
+  energyToday: { domain: "sensor", name: "Yield", deviceClass: "energy", units: ["kWh"], stateClasses: ["total_increasing"] },
+  energyLifetime: { domain: "sensor", name: "Yield (Lifetime)", deviceClass: "energy", units: ["kWh"], stateClasses: ["total", "total_increasing"] },
 });
 
 function normalize(value) {
@@ -114,9 +122,140 @@ function preferredAttribute(attributeSets, key) {
   return null;
 }
 
+function panelPrefix(label) {
+  const match = String(label ?? "").trim().match(/^(.+?)[\s_-]*(\d+)$/);
+  return match ? normalize(match[1]) : null;
+}
+
+function recoverUnavailableTopology(modules) {
+  const groupsByPrefix = new Map();
+  for (const module of modules.filter((candidate) => candidate.hasTopology)) {
+    const prefix = panelPrefix(module.panelLabel);
+    const stringSuffix = normalize(module.stringLabel).match(/([a-z0-9]+)$/)?.[1] ?? null;
+    if (!prefix || ["module", "optimizer", "panel", "pv"].includes(prefix) || stringSuffix !== prefix) continue;
+    const signature = [module.inverterLabel, module.mpptLabel, module.stringLabel].join("\u0000");
+    const matches = groupsByPrefix.get(prefix) ?? new Map();
+    matches.set(signature, module);
+    groupsByPrefix.set(prefix, matches);
+  }
+  return modules.map((module) => {
+    if (module.hasTopology) return module;
+    const matches = groupsByPrefix.get(panelPrefix(module.panelLabel));
+    if (matches?.size !== 1) return module;
+    const reference = [...matches.values()][0];
+    return {
+      ...module,
+      inverterLabel: reference.inverterLabel,
+      mpptLabel: reference.mpptLabel,
+      stringLabel: reference.stringLabel,
+      hasTopology: true,
+    };
+  });
+}
+
+function displayModules(modules) {
+  const inverterLabels = [...new Set(
+    modules.filter((module) => module.hasTopology).map((module) => module.inverterLabel),
+  )].sort(naturalOrder.compare);
+  const aliases = new Map(inverterLabels.map((label, index) => [label, `Inverter ${index + 1}`]));
+  const showInverter = inverterLabels.length > 1;
+  return modules.map(({ hasTopology, ...module }) => ({
+    ...module,
+    groupLabel: hasTopology
+      ? [showInverter ? aliases.get(module.inverterLabel) : null, module.mpptLabel, module.stringLabel]
+        .filter(Boolean)
+        .join(" · ")
+      : "Unassigned modules",
+  }));
+}
+
+function serialTokens(value) {
+  return new Set(
+    String(value ?? "").match(/\d{8,}/g) ?? [],
+  );
+}
+
+function eg4ModelLabel(value) {
+  return /\b18\s*k?pv\b/i.test(String(value ?? "")) ? "18kPV inverter" : "inverter";
+}
+
+function exactDeviceSelector(device, selector) {
+  if (!selector) return false;
+  return [device.id, device.name, device.name_by_user]
+    .filter(Boolean)
+    .some((value) => normalize(value) === normalize(selector));
+}
+
+function validateEg4Device({ device, registry, liveStates }) {
+  const entityMap = {};
+  for (const [key, specification] of Object.entries(EG4_COMPARISON_ENTITIES)) {
+    const matches = registry.filter((entity) =>
+      entity.platform === EG4_PLATFORM
+      && entity.device_id === device.id
+      && entity.disabled_by == null
+      && entity.entity_id?.startsWith(`${specification.domain}.`)
+      && normalize(entity.original_name) === normalize(specification.name)
+    );
+    if (matches.length !== 1) {
+      return { entities: null, reason: `EG4 ${specification.name} is not uniquely available` };
+    }
+    const entityId = matches[0].entity_id;
+    const state = liveStates.get(entityId);
+    const attributes = state?.attributes ?? {};
+    if (
+      !ENTITY_ID_PATTERN.test(entityId)
+      || !state
+      || attributes.device_class !== specification.deviceClass
+      || !specification.units.includes(attributes.unit_of_measurement)
+      || !specification.stateClasses.includes(attributes.state_class)
+    ) {
+      return { entities: null, reason: `EG4 ${specification.name} metadata is incompatible` };
+    }
+    entityMap[key] = entityId;
+  }
+  return { entities: Object.freeze(entityMap), reason: null };
+}
+
+function resolveEg4Comparison({ devices, registry, liveStates, modules, selector }) {
+  const tigoInverters = new Set(modules.map((module) => normalize(module.inverterLabel)));
+  if (tigoInverters.size !== 1) {
+    return { comparison: null, reason: "Tigo system spans multiple inverters" };
+  }
+  const tigoSerials = new Set(modules.flatMap((module) => [...serialTokens(module.inverterLabel)]));
+  const eligible = devices
+    .filter((device) => device.disabled_by == null && normalize(device.manufacturer) === "eg4 electronics")
+    .map((device) => ({ device, validation: validateEg4Device({ device, registry, liveStates }) }))
+    .filter(({ validation }) => validation.entities);
+  const candidates = eligible.filter(({ device }) => {
+    if (selector) return exactDeviceSelector(device, selector);
+    if (tigoSerials.size !== 1) return false;
+    const deviceSerials = new Set(deviceIdentifiers(device)
+      .flatMap(([, identifier]) => [...serialTokens(identifier)]));
+    return [...deviceSerials].some((serial) => tigoSerials.has(serial));
+  });
+  if (candidates.length !== 1) {
+    return {
+      comparison: null,
+      reason: candidates.length === 0
+        ? "no serial-matched EG4 inverter with compatible total sensors"
+        : "multiple matching EG4 inverters; set EG4_INVERTER_DEVICE_ID",
+    };
+  }
+
+  const { device, validation } = candidates[0];
+  return {
+    comparison: {
+      provider: "EG4",
+      model: eg4ModelLabel(device.model),
+      entities: validation.entities,
+    },
+    reason: null,
+  };
+}
+
 const naturalOrder = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 
-export function discoverTigo({ devices, entities, states, selector = "" }) {
+export function discoverTigo({ devices, entities, states, selector = "", comparisonSelector = "" }) {
   if (!Array.isArray(devices) || !Array.isArray(entities) || !Array.isArray(states)) {
     throw new TypeError("devices, entities, and states must be arrays");
   }
@@ -151,7 +290,7 @@ export function discoverTigo({ devices, entities, states, selector = "" }) {
     const identifier = tigoIdentifier(device);
     return identifier?.startsWith(`${systemId}_module_`) && device.via_device_id === systemDevice.id;
   });
-  const modules = moduleDevices.map((device) => {
+  let modules = moduleDevices.map((device) => {
     const identifier = tigoIdentifier(device);
     const objectId = identifier.slice(`${systemId}_module_`.length);
     const moduleEntities = resolveMap({
@@ -169,27 +308,35 @@ export function discoverTigo({ devices, entities, states, selector = "" }) {
       ?? device.name_by_user
       ?? device.name
       ?? `Module ${objectId}`;
-    const inverterLabel = preferredAttribute(attributeSets, "inverter_label") ?? "Inverter";
-    const mpptLabel = preferredAttribute(attributeSets, "mppt_label");
-    const stringLabel = preferredAttribute(attributeSets, "string_label") ?? "Unassigned string";
+    const inverterAttribute = preferredAttribute(attributeSets, "inverter_label");
+    const mpptAttribute = preferredAttribute(attributeSets, "mppt_label");
+    const stringAttribute = preferredAttribute(attributeSets, "string_label");
     return {
       deviceId: device.id,
       objectId,
       panelLabel,
-      inverterLabel,
-      mpptLabel,
-      stringLabel,
-      groupLabel: [inverterLabel, mpptLabel, stringLabel].filter(Boolean).join(" · "),
+      inverterLabel: inverterAttribute ?? "Inverter",
+      mpptLabel: mpptAttribute,
+      stringLabel: stringAttribute ?? "Unassigned string",
+      hasTopology: Boolean(mpptAttribute && stringAttribute),
       model: device.model || "TS4 Optimizer",
       entities: Object.freeze(moduleEntities),
     };
   });
   if (modules.length === 0) throw new Error(`No enabled Tigo modules were found for system ${systemId}`);
+  modules = displayModules(recoverUnavailableTopology(modules));
   modules.sort((left, right) =>
     naturalOrder.compare(left.groupLabel, right.groupLabel)
     || naturalOrder.compare(left.panelLabel, right.panelLabel)
     || naturalOrder.compare(left.objectId, right.objectId)
   );
+  const { comparison, reason: comparisonReason } = resolveEg4Comparison({
+    devices,
+    registry: entities,
+    liveStates,
+    modules,
+    selector: comparisonSelector,
+  });
 
   return {
     system: {
@@ -202,6 +349,8 @@ export function discoverTigo({ devices, entities, states, selector = "" }) {
     },
     entities: Object.freeze(systemEntities),
     modules: Object.freeze(modules),
+    comparison,
+    comparisonReason,
   };
 }
 
@@ -209,4 +358,5 @@ export const discoveryContract = Object.freeze({
   platform: PLATFORM,
   system: SYSTEM_ENTITIES,
   module: MODULE_ENTITIES,
+  comparison: EG4_COMPARISON_ENTITIES,
 });

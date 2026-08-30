@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { dashboardMetadata } from "../src/dashboard.mjs";
+import { HomeAssistantClient } from "../src/ha-client.mjs";
 
 const LOAD_TIMEOUT_MS = 60_000;
 
@@ -256,6 +257,21 @@ async function main() {
   const token = process.env.TIGO_HA_TOKEN ?? process.env.HA_TOKEN;
   if (!baseUrl) throw new Error("Set HA_BASE_URL");
   if (!token) throw new Error("Set HA_TOKEN or TIGO_HA_TOKEN");
+  const client = new HomeAssistantClient({ baseUrl, token });
+  await client.connect();
+  let viewPaths;
+  try {
+    const config = await client.call({
+      type: "lovelace/config",
+      url_path: dashboardMetadata.urlPath,
+      force: true,
+    });
+    viewPaths = config?.views?.map((view) => view.path)
+      .filter((path) => typeof path === "string" && path.length > 0);
+  } finally {
+    client.close();
+  }
+  if (!viewPaths?.length) throw new Error(`Dashboard ${dashboardMetadata.urlPath} has no inspectable views`);
   const chromium = process.env.CHROMIUM_BIN ?? "/usr/bin/chromium-browser";
   accessSync(chromium, constants.X_OK);
   const outputDir = resolve(args.outputDir);
@@ -331,7 +347,7 @@ async function main() {
 
     const desktop = { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false };
     const mobile = { width: 390, height: 844, deviceScaleFactor: 2, mobile: true };
-    const cases = ["overview", "energy", "modules", "system"].flatMap((view) =>
+    const cases = viewPaths.flatMap((view) =>
       ["light", "dark"].flatMap((theme) => [
         { view, theme, viewport: desktop },
         { view, theme, viewport: mobile },
@@ -344,7 +360,7 @@ async function main() {
     const uniqueErrors = [...new Map(browserErrors.map((error) => [JSON.stringify(error), error])).values()];
     const allowedExternalErrors = uniqueErrors.filter((error) => {
       const combined = `${error.url ?? ""} ${error.text ?? ""}`;
-      const duplicateFocusTrap = String(error.text).includes('the name "focus-trap" has already been used')
+      const duplicateExternalElement = /the name "(?:focus-trap|side-drawer)" has already been used/.test(String(error.text))
         && ["/hacsfiles/advanced-camera-card/", "/hacsfiles/frigate-hass-card/"]
           .some((resource) => combined.includes(resource));
       let knownSourceMapMiss = false;
@@ -356,7 +372,7 @@ async function main() {
           knownSourceMapMiss = false;
         }
       }
-      return duplicateFocusTrap || knownSourceMapMiss;
+      return duplicateExternalElement || knownSourceMapMiss;
     });
     const actionableErrors = uniqueErrors.filter((error) => !allowedExternalErrors.includes(error));
     const report = {
@@ -376,7 +392,7 @@ async function main() {
       throw new Error(`Sidebar link for ${dashboardMetadata.urlPath} was not found; inspect ${reportPath}`);
     }
     const screenshots = captures.reduce((count, capture) => count + capture.segments.length, 0);
-    console.log(`visual-qa-ok routes=4 cases=${captures.length} screenshots=${screenshots} themes=light+dark report=${reportPath} actionable_errors=0 allowed_external_errors=${allowedExternalErrors.length}`);
+    console.log(`visual-qa-ok routes=${viewPaths.length} cases=${captures.length} screenshots=${screenshots} themes=light+dark report=${reportPath} actionable_errors=0 allowed_external_errors=${allowedExternalErrors.length}`);
   } finally {
     session?.close();
     await stopBrowser(browser);

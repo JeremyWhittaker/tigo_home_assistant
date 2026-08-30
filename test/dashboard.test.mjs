@@ -32,14 +32,21 @@ function fixture({ moduleCount = 8, systemId = "123456" } = {}) {
   const entities = [];
   const states = [];
   let entitySequence = 0;
-  const addEntity = ({ deviceId, domain, uniqueId, attributes = {} }) => {
+  const addEntity = ({
+    deviceId,
+    domain,
+    uniqueId,
+    attributes = {},
+    platform = "tigo_energy",
+    originalName = "Localized display name",
+  }) => {
     entitySequence += 1;
     const entity = {
       entity_id: `${domain}.operator_renamed_${String(entitySequence).padStart(3, "0")}`,
       unique_id: uniqueId,
       device_id: deviceId,
-      platform: "tigo_energy",
-      original_name: "Localized display name",
+      platform,
+      original_name: originalName,
       disabled_by: null,
     };
     entities.push(entity);
@@ -86,6 +93,64 @@ function fixture({ moduleCount = 8, systemId = "123456" } = {}) {
   return { devices, entities, states, systemDeviceId, systemId, moduleCount };
 }
 
+function attachEg4(data, { serial = "1234567890", deviceId = "device-eg4", match = true } = {}) {
+  data.devices.push({
+    id: deviceId,
+    identifiers: [["eg4_web_monitor", serial]],
+    manufacturer: "EG4 Electronics",
+    model: "18KPV",
+    name: `EG4 18KPV ${serial}`,
+    disabled_by: null,
+  });
+  if (match) {
+    for (const state of data.states) {
+      if (state.attributes?.inverter_label) state.attributes.inverter_label = `EG4 18KPV ${serial}`;
+    }
+  }
+  const specifications = [
+    ["pv_power", "PV Total Power", "power", "W", "measurement"],
+    ["yield", "Yield", "energy", "kWh", "total_increasing"],
+    ["yield_lifetime", "Yield (Lifetime)", "energy", "kWh", "total_increasing"],
+  ];
+  const result = {};
+  for (const [key, originalName, deviceClass, unit, stateClass] of specifications) {
+    const entityId = `sensor.eg4_${deviceId.replaceAll("-", "_")}_${key}`;
+    data.entities.push({
+      entity_id: entityId,
+      unique_id: `${serial}_${key}`,
+      device_id: deviceId,
+      platform: "eg4_web_monitor",
+      original_name: originalName,
+      disabled_by: null,
+    });
+    data.states.push({
+      entity_id: entityId,
+      state: "1",
+      attributes: {
+        device_class: deviceClass,
+        unit_of_measurement: unit,
+        state_class: stateClass,
+      },
+    });
+    result[key] = entityId;
+  }
+  const pv1 = `sensor.eg4_${deviceId.replaceAll("-", "_")}_pv_1_power`;
+  data.entities.push({
+    entity_id: pv1,
+    unique_id: `${serial}_pv_1_power`,
+    device_id: deviceId,
+    platform: "eg4_web_monitor",
+    original_name: "PV 1 Power",
+    disabled_by: null,
+  });
+  data.states.push({
+    entity_id: pv1,
+    state: "1",
+    attributes: { device_class: "power", unit_of_measurement: "W", state_class: "measurement" },
+  });
+  return { ...result, pv1, deviceId, serial };
+}
+
 test("discovers a system and modules through identifiers and unique ids after entity renames", () => {
   const data = fixture({ moduleCount: 44 });
   const discovery = discoverTigo(data);
@@ -93,7 +158,7 @@ test("discovers a system and modules through identifiers and unique ids after en
   assert.equal(discovery.system.systemId, data.systemId);
   assert.equal(discovery.modules.length, 44);
   assert.equal(discovery.modules[0].panelLabel, "Panel 01");
-  assert.equal(discovery.modules[0].groupLabel, "Inverter 1 · MPPT 1 · String 1");
+  assert.equal(discovery.modules[0].groupLabel, "MPPT 1 · String 1");
   assert.match(discovery.entities.currentPower, /^sensor\.operator_renamed_/);
   assert.notEqual(discovery.entities.currentPower, `sensor.${data.systemId}_current_power`);
 });
@@ -117,17 +182,19 @@ test("discovery handles multiple systems with an explicit selector and rejects m
   assert.throws(() => discoverTigo(missing), /absent from live state/);
 });
 
-test("optional system diagnostics enrich the System view without becoming prerequisites", () => {
+test("optional system diagnostics enrich the Diagnostics view without becoming prerequisites", () => {
   const complete = fixture({ moduleCount: 2 });
   const discovery = discoverTigo(complete);
   const systemView = buildDashboard(discovery).views.find((view) => view.path === "system");
   const serialized = stableString(systemView);
-  for (const key of ["accountTier", "moduleCount", "pollingInterval", "integrationVersion"]) {
+  for (const key of ["accountTier", "moduleCount", "ratedArrayPower", "pollingInterval", "integrationVersion"]) {
     assert.ok(discovery.entities[key]);
     assert.ok(serialized.includes(discovery.entities[key]));
   }
 
-  const optionalSuffixes = new Set(["account_tier", "module_count", "polling_interval", "integration_version"]);
+  const optionalSuffixes = new Set([
+    "account_tier", "module_count", "rated_array_power", "polling_interval", "integration_version",
+  ]);
   const optionalIds = new Set(
     complete.entities
       .filter((entity) => [...optionalSuffixes].some((suffix) => entity.unique_id.endsWith(`_${suffix}`)))
@@ -141,10 +208,11 @@ test("optional system diagnostics enrich the System view without becoming prereq
   const fallback = discoverTigo(withoutOptional);
   assert.equal(fallback.entities.accountTier, null);
   assert.equal(fallback.entities.moduleCount, null);
+  assert.equal(fallback.entities.ratedArrayPower, null);
   assert.doesNotThrow(() => validateDashboard(buildDashboard(fallback), withoutOptional.states));
 });
 
-test("dashboard uses four responsive native-only, read-only views for variable module counts", () => {
+test("dashboard uses responsive native-only, read-only views for variable module counts", () => {
   for (const moduleCount of [1, 7, 44]) {
     const data = fixture({ moduleCount });
     const dashboard = buildDashboard(discoverTigo(data));
@@ -157,12 +225,15 @@ test("dashboard uses four responsive native-only, read-only views for variable m
     assert.ok(!serialized.includes("custom:"));
     assert.ok(!serialized.includes('"action":"toggle"'));
     assert.ok(!serialized.includes('"type":"energy-'));
-    assert.ok(serialized.includes("does not change Home Assistant's global Energy sources"));
+    assert.ok(!serialized.includes("last_updated"));
+    assert.ok(serialized.includes("double-counts production"));
+    assert.ok(!stableString(dashboard.views.find((view) => view.path === "overview"))
+      .includes("sample within freshness window"));
     assert.ok(validation.references.every((entityId) => data.states.some((state) => state.entity_id === entityId)));
   }
 });
 
-test("overview and system health cards stay compact when module telemetry is unavailable", () => {
+test("overview stays compact while Diagnostics lists module-level exceptions", () => {
   const data = fixture({ moduleCount: 44 });
   const discovery = discoverTigo(data);
   const dashboard = buildDashboard(discovery);
@@ -170,20 +241,16 @@ test("overview and system health cards stay compact when module telemetry is una
     discovery.modules.flatMap((module) => [module.entities.power, module.entities.energyToday]),
   );
 
-  for (const path of ["overview", "system"]) {
-    const view = dashboard.views.find((candidate) => candidate.path === path);
-    const entityFilters = view.sections
-      .flatMap((section) => section.cards)
-      .filter((card) => card.type === "entity-filter");
-    assert.equal(entityFilters.length, 1);
-    assert.ok(
-      entityFilters[0].entities.every((row) => !moduleEntityIds.has(row.entity)),
-      `${path} should leave module-level availability to the Modules view`,
-    );
-  }
+  const filtersFor = (path) => dashboard.views.find((candidate) => candidate.path === path).sections
+    .flatMap((section) => section.cards)
+    .filter((card) => card.type === "entity-filter");
+  const overviewFilters = filtersFor("overview");
+  assert.equal(overviewFilters.length, 1);
+  assert.ok(overviewFilters[0].entities.every((row) => !moduleEntityIds.has(row.entity)));
 
-  const summary = stableString(dashboard.views.find((view) => view.path === "overview"));
-  assert.ok(summary.includes("Module power readings are marked unavailable"));
+  const diagnosticsFilters = filtersFor("system");
+  assert.equal(diagnosticsFilters.length, 1);
+  assert.ok(diagnosticsFilters[0].entities.some((row) => moduleEntityIds.has(row.entity)));
 });
 
 test("module view groups panels by inverter, MPPT, and string attributes", () => {
@@ -193,10 +260,105 @@ test("module view groups panels by inverter, MPPT, and string attributes", () =>
   assert.equal(modulesView.sections.length, 3);
   const headings = modulesView.sections.map((section) => section.cards[0].heading);
   assert.deepEqual(headings, [
-    "Inverter 1 · MPPT 1 · String 1",
-    "Inverter 1 · MPPT 1 · String 2",
-    "Inverter 1 · MPPT 2 · String 3",
+    "MPPT 1 · String 1",
+    "MPPT 1 · String 2",
+    "MPPT 2 · String 3",
   ]);
+  assert.ok(modulesView.sections.every((section) => section.cards.slice(1)
+    .every((card) => card.type === "entities")));
+});
+
+test("unavailable module topology is recovered only from an unambiguous panel-label family", () => {
+  const data = fixture({ moduleCount: 8 });
+  const stringTwoStates = data.states.filter((state) => state.attributes?.string_label === "String 2");
+  for (let index = 0; index < stringTwoStates.length; index += 2) {
+    stringTwoStates[index].attributes.panel_label = `C${(index / 2) + 1}`;
+    stringTwoStates[index].attributes.string_label = "String C";
+    stringTwoStates[index + 1].attributes.panel_label = `C${(index / 2) + 1}`;
+    stringTwoStates[index + 1].attributes.string_label = "String C";
+  }
+  for (const state of stringTwoStates.slice(-2)) {
+    const { panel_label: panelLabel } = state.attributes;
+    state.attributes = { panel_label: panelLabel };
+  }
+  const discovery = discoverTigo(data);
+  const recovered = discovery.modules.find((module) => module.panelLabel === "C4");
+  assert.equal(recovered.groupLabel, "MPPT 1 · String C");
+  assert.ok(!discovery.modules.some((module) => module.groupLabel === "Unassigned modules"));
+
+  const partial = fixture({ moduleCount: 1 });
+  for (const state of partial.states.filter((candidate) => candidate.attributes?.panel_label)) {
+    state.attributes = { panel_label: "Panel 01", inverter_label: "Only inverter survives" };
+  }
+  assert.equal(discoverTigo(partial).modules[0].groupLabel, "Unassigned modules");
+});
+
+test("Compare is enabled only for one serial-matched EG4 device with strict total metadata", () => {
+  const data = fixture({ moduleCount: 4 });
+  const eg4 = attachEg4(data);
+  data.devices.push({
+    id: "device-eg4-battery-bank",
+    manufacturer: "EG4 Electronics",
+    model: "Battery Bank",
+    name: `Battery Bank ${eg4.serial}`,
+    disabled_by: null,
+  });
+  data.entities.push({
+    entity_id: "sensor.eg4_battery_bank_state_of_charge",
+    unique_id: `${eg4.serial}_battery_soc`,
+    device_id: "device-eg4-battery-bank",
+    platform: "eg4_web_monitor",
+    original_name: "State of Charge",
+    disabled_by: null,
+  });
+  data.states.push({ entity_id: "sensor.eg4_battery_bank_state_of_charge", state: "80", attributes: {} });
+  const discovery = discoverTigo(data);
+  assert.deepEqual(discovery.comparison.entities, {
+    pvPower: eg4.pv_power,
+    energyToday: eg4.yield,
+    energyLifetime: eg4.yield_lifetime,
+  });
+  const dashboard = buildDashboard(discovery);
+  assert.deepEqual(dashboard.views.map((view) => view.path), [
+    "overview", "energy", "modules", "compare", "system",
+  ]);
+  const serialized = stableString(dashboard.views.find((view) => view.path === "compare"));
+  assert.ok(serialized.includes(eg4.pv_power));
+  assert.ok(!serialized.includes(eg4.pv1));
+  assert.ok(!serialized.includes(eg4.serial));
+
+  const incompatible = fixture({ moduleCount: 2 });
+  const bad = attachEg4(incompatible);
+  incompatible.states.find((state) => state.entity_id === bad.pv_power)
+    .attributes.unit_of_measurement = "kW";
+  assert.equal(discoverTigo(incompatible).comparison, null);
+
+  const resettableDaily = fixture({ moduleCount: 2 });
+  const resettable = attachEg4(resettableDaily);
+  resettableDaily.states.find((state) => state.entity_id === resettable.yield)
+    .attributes.state_class = "total";
+  assert.equal(discoverTigo(resettableDaily).comparison, null);
+
+  const ambiguous = fixture({ moduleCount: 2 });
+  attachEg4(ambiguous);
+  attachEg4(ambiguous, { deviceId: "device-eg4-duplicate" });
+  assert.equal(discoverTigo(ambiguous).comparison, null);
+
+  const multipleTigoInverters = fixture({ moduleCount: 4 });
+  attachEg4(multipleTigoInverters);
+  for (const state of multipleTigoInverters.states.filter((candidate) =>
+    candidate.attributes?.panel_label === "Panel 04")) {
+    state.attributes.inverter_label = "Second inverter 9999999999";
+  }
+  assert.equal(discoverTigo(multipleTigoInverters).comparison, null);
+
+  const displayNameCollision = fixture({ moduleCount: 2 });
+  const collision = attachEg4(displayNameCollision, { serial: "8765432100" });
+  for (const state of displayNameCollision.states.filter((candidate) => candidate.attributes?.inverter_label)) {
+    state.attributes.inverter_label = "Shared site 1234567890";
+  }
+  displayNameCollision.devices.find((device) => device.id === collision.deviceId).name = "Shared site 1234567890";
+  assert.equal(discoverTigo(displayNameCollision).comparison, null);
 });
 
 test("dashboard validation rejects missing state, control entities, custom cards, and write actions", () => {
@@ -220,7 +382,7 @@ test("dashboard validation rejects missing state, control entities, custom cards
 
 test("Home Assistant renders every generated template during preflight", async () => {
   const dashboard = buildDashboard(discoverTigo(fixture({ moduleCount: 2 })));
-  assert.equal(collectDashboardTemplates(dashboard).length, 1);
+  assert.equal(collectDashboardTemplates(dashboard).length, 2);
   const requests = [];
   const client = {
     async request(path, options) {
@@ -228,10 +390,11 @@ test("Home Assistant renders every generated template during preflight", async (
       return "rendered";
     },
   };
-  assert.deepEqual(await validateDashboardTemplates(client, dashboard), { templateCount: 1 });
-  assert.equal(requests[0].path, "/api/template");
-  assert.equal(requests[0].options.method, "POST");
-  assert.equal(requests[0].options.responseType, "text");
+  assert.deepEqual(await validateDashboardTemplates(client, dashboard), { templateCount: 2 });
+  assert.equal(requests.length, 2);
+  assert.ok(requests.every((request) => request.path === "/api/template"));
+  assert.ok(requests.every((request) => request.options.method === "POST"));
+  assert.ok(requests.every((request) => request.options.responseType === "text"));
 });
 
 class FakeWs {

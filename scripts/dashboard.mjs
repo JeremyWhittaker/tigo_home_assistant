@@ -28,6 +28,7 @@ Environment:
   HA_TOKEN                Long-lived administrator token
   TIGO_HA_TOKEN           Optional token alias (takes precedence)
   TIGO_SYSTEM_DEVICE_ID   Device id or Tigo system id when more than one exists
+  EG4_INVERTER_DEVICE_ID  Optional exact EG4 device id/name for the Compare view
   HA_TIMEOUT_MS           Optional request timeout (default: 15000)`;
 }
 
@@ -64,6 +65,7 @@ async function collectPlan(client) {
     entities,
     states,
     selector: process.env.TIGO_SYSTEM_DEVICE_ID ?? "",
+    comparisonSelector: process.env.EG4_INVERTER_DEVICE_ID ?? "",
   });
   const candidate = buildDashboard(discovery);
   const validation = validateDashboard(candidate, states);
@@ -94,6 +96,7 @@ function summary(client, context) {
     `entities=${context.validation.references.length}`,
     `cards=${context.validation.cardCount}`,
     `views=${context.validation.viewCount}`,
+    `comparison=${context.discovery.comparison ? "enabled" : "not-matched"}`,
     `templates=${context.templateValidation.templateCount}`,
     `dashboard=${dashboardMetadata.urlPath}`,
     `action=${context.plan.action}`,
