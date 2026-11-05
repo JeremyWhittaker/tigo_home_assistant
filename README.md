@@ -50,6 +50,17 @@ cannot make Tigo produce real-time data. The integration preserves Tigo's source
 timestamp, reports the data age, and marks daylight data stale after 45 minutes.
 It never presents an old sample as live data.
 
+The dashboard's source-age badges show their label beside the elapsed value,
+so a duration is clearly the age of Tigo's measurement. Home Assistant's refresh
+time is a separate event. This display change preserves polling, telemetry,
+comparison settings and existing routes.
+
+November 5, 2026: deployed with exact dashboard save/readback. All three affected
+views passed 12 desktop/mobile/light/dark cases and 44 screenshots with no
+browser errors; the source-age label was manually inspected on desktop and phone.
+The visible delayed-data warning remains; this is a display correction, not a
+claim of fresh telemetry or a repaired production discrepancy.
+
 ## Understand power, capacity, and the 18kPV label
 
 These values answer different questions and should not be treated as

@@ -25,9 +25,9 @@ function tile(entity, name, icon, columns = 6) {
   };
 }
 
-function badge(entity, name, icon) {
+function badge(entity, name, icon, { showName = false } = {}) {
   if (!entity) return null;
-  return { type: "entity", entity, name, icon, ...monitoringActions() };
+  return { type: "entity", entity, name, icon, ...(showName ? { show_name: true } : {}), ...monitoringActions() };
 }
 
 function entityRow(entity, name, icon) {
@@ -220,7 +220,7 @@ function comparisonView(discovery) {
     badges: compact([
       badge(tigo.currentPower, "Tigo power", "mdi:solar-panel"),
       badge(eg4.pvPower, `${source} PV`, "mdi:solar-power"),
-      badge(tigo.cloudDataAge, "Tigo source age", "mdi:cloud-clock"),
+      badge(tigo.cloudDataAge, "Tigo source age", "mdi:cloud-clock", { showName: true }),
     ]),
     sections: [
       {
@@ -296,7 +296,7 @@ export function buildDashboard(discovery) {
         badge(e.currentPower, "Tigo power", "mdi:solar-power"),
         badge(e.energyToday, "Today", "mdi:calendar-today"),
         badge(e.reportingModules, "Reporting", "mdi:solar-panel"),
-        badge(e.cloudDataAge, "Source age", "mdi:cloud-clock"),
+        badge(e.cloudDataAge, "Source age", "mdi:cloud-clock", { showName: true }),
       ]),
       sections: [
         {
@@ -392,7 +392,7 @@ export function buildDashboard(discovery) {
       dense_section_placement: true,
       badges: compact([
         badge(e.reportingModules, "Reporting", "mdi:solar-panel"),
-        badge(e.cloudDataAge, "Source age", "mdi:cloud-clock"),
+        badge(e.cloudDataAge, "Source age", "mdi:cloud-clock", { showName: true }),
       ]),
       sections: [...moduleGroups.entries()].map(([label, modules]) => moduleSection(label, modules)),
     },
